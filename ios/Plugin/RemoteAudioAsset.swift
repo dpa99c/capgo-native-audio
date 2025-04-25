@@ -1,4 +1,6 @@
 import AVFoundation
+import os.log
+
 
 /**
  * RemoteAudioAsset extends AudioAsset to handle remote (URL-based) audio files
@@ -11,15 +13,20 @@ public class RemoteAudioAsset: AudioAsset {
     var notificationObservers: [NSObjectProtocol] = []
     var duration: TimeInterval = 0
     var asset: AVURLAsset?
+    private var identifier: String = "RemoteAudioAsset"
 
-    override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!, withFadeDelay delay: Float!) {
-        super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0, withFadeDelay: delay ?? 0.0)
+    private var fadeTask: DispatchWorkItem?
+
+    override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!) {
+        super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0)
+        self.logger = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "NativeAudio", category: self.identifier)
+
 
         owner.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
-            
+
             guard let url = URL(string: path ?? "") else {
-                print("Invalid URL: \(String(describing: path))")
+                log("Invalid URL: %@", level: .error, String(describing: path))
                 return
             }
 
@@ -85,6 +92,7 @@ public class RemoteAudioAsset: AudioAsset {
         players = []
         playerObservers = []
         notificationObservers = []
+        cancelFade()
     }
 
     func playerDidFinishPlaying(player: AVPlayer) {
@@ -97,7 +105,13 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    override func play(time: TimeInterval, delay: TimeInterval) {
+    /**
+     * Play the audio from the specified time with optional delay
+     * - Parameters:
+     *   - time: Start time in seconds
+     *   - volume: Volume level (0.0-1.0)
+     */
+    override func play(time: TimeInterval, volume: Float??) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
@@ -112,17 +126,9 @@ public class RemoteAudioAsset: AudioAsset {
 
             // Ensure non-negative values for time and delay
             let validTime = max(time, 0)
-            let validDelay = max(delay, 0)
 
-            if validDelay > 0 {
-                // Convert delay to CMTime and add to current time
-                let currentTime = player.currentTime()
-                let delayTime = CMTimeMakeWithSeconds(validDelay, preferredTimescale: currentTime.timescale)
-                let timeToPlay = CMTimeAdd(currentTime, delayTime)
-                player.seek(to: timeToPlay)
-            } else {
-                player.seek(to: CMTimeMakeWithSeconds(validTime, preferredTimescale: 1))
-            }
+            player.seek(to: CMTimeMakeWithSeconds(validTime, preferredTimescale: 1))
+            player.volume = (volume ?? self.initialVolume) ?? self.initialVolume
             player.play()
             playIndex = (playIndex + 1) % players.count
             startCurrentTimeUpdates()
@@ -134,6 +140,8 @@ public class RemoteAudioAsset: AudioAsset {
             guard let self = self else { return }
 
             guard !players.isEmpty && playIndex < players.count else { return }
+
+            cancelFade()
 
             let player = players[playIndex]
             player.pause()
@@ -175,6 +183,7 @@ public class RemoteAudioAsset: AudioAsset {
             guard let self = self else { return }
 
             stopCurrentTimeUpdates()
+            cancelFade()
 
             for player in players {
                 // First pause
@@ -184,6 +193,9 @@ public class RemoteAudioAsset: AudioAsset {
                     // Reset any loop settings
                     player.actionAtItemEnd = .pause
                 })
+                self.owner?.notifyListeners("complete", data: [
+                    "assetId": self.assetId as Any
+                ])
             }
             // Reset playback state
             playIndex = 0
@@ -206,7 +218,6 @@ public class RemoteAudioAsset: AudioAsset {
                     object: playerItem,
                     queue: OperationQueue.main) { [weak self, weak player] notification in
                         guard let strongPlayer = player,
-                              let strongSelf = self,
                               let item = notification.object as? AVPlayerItem,
                               strongPlayer.currentItem === item else { return }
 
@@ -249,6 +260,7 @@ public class RemoteAudioAsset: AudioAsset {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
+            cancelFade()
             stopCurrentTimeUpdates()
             stop()
 
@@ -264,14 +276,25 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    override func setVolume(volume: NSNumber!) {
+    /**
+     * Set the volume for all audio channels
+     * - Parameter volume: Volume level (0.0-1.0)
+     */
+    override func setVolume(volume: NSNumber!, fadeDuration: Double) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
-            // Ensure volume is in valid range (0.0-1.0)
+            cancelFade()
+            // Ensure volume is in valid range
             let validVolume = min(max(volume.floatValue, Constant.MinVolume), Constant.MaxVolume)
             for player in players {
-                player.volume = validVolume
+                if(isPlaying() && fadeDuration > 0) {
+                    self.log("Fade to volume %2f over @%2f seconds", level: .debug, validVolume, fadeDuration)
+                    self.fadeTo(player: player, fadeOutDuration: fadeDuration, targetVolume: validVolume)
+                } else {
+                    self.log("Set volume to %2f", level: .debug, validVolume)
+                    player.volume = validVolume
+                }
             }
         }
     }
@@ -337,33 +360,65 @@ public class RemoteAudioAsset: AudioAsset {
         return result
     }
 
-    override func playWithFade(time: TimeInterval) {
+    /**
+    * Play the audio with fade-in effect
+    * - Parameters:
+    *   - time: Start time in seconds
+    *   - volume: Volume level (0.0-1.0)
+    *   - fadeInDuration: Duration of the fade-in effect in seconds
+    */
+    override func playWithFade(time: TimeInterval, volume: Float?, fadeInDuration: TimeInterval) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
-
             guard !players.isEmpty && playIndex < players.count else { return }
 
             let player = players[playIndex]
+            player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1))
 
             if player.timeControlStatus != .playing {
-                player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1))
                 player.volume = 0 // Start with volume at 0
                 player.play()
+                self.fadeIn(player: player, fadeInDuration: fadeInDuration, targetVolume: volume ?? self.initialVolume)
                 playIndex = (playIndex + 1) % players.count
                 startCurrentTimeUpdates()
-
-                // Start fade-in using the parent class method
-                startVolumeRamp(from: 0, to: initialVolume, player: player)
-            } else {
-                if player.volume < initialVolume {
-                    // Continue fade-in if already in progress
-                    startVolumeRamp(from: player.volume, to: initialVolume, player: player)
-                }
             }
         }
     }
 
-    override func stopWithFade() {
+    func fadeIn(player: AVPlayer, fadeInDuration: TimeInterval, targetVolume: Float) {
+        cancelFade()
+        let steps = Int(fadeInDuration / TimeInterval(FADE_DELAY))
+        guard steps > 0 else { return }
+        let fadeStep = targetVolume / Float(steps)
+        var currentVolume: Float = 0
+        let currentTime = getCurrentTime()
+
+        log("Beginning fade in at time %2f over @%2f seconds to target volume %2f in %d steps (step duration: %2fs)", level: .debug, currentTime, fadeInDuration, targetVolume, steps, FADE_DELAY)
+
+        var task: DispatchWorkItem!
+        task = DispatchWorkItem { [weak self] in
+            for _ in 0..<steps {
+                guard !task.isCancelled else { return }
+                if(!(self?.isPlaying())!){
+                    task.cancel()
+                    return
+                }
+                let previousCurrentVolume = currentVolume
+                currentVolume += fadeStep
+                DispatchQueue.main.async {
+                    let thisTargetVolume = min(currentVolume, targetVolume)
+                    self?.log("Fade in step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    player.volume = thisTargetVolume
+                }
+                Thread.sleep(forTimeInterval: TimeInterval(self?.FADE_DELAY ?? 0.08))
+            }
+            self?.log("Fade in complete at time %2f", level: .debug, self?.getCurrentTime() ?? 0)
+        }
+        fadeTask = task
+        fadeQueue!.async(execute: task)
+    }
+
+    override func stopWithFade(fadeOutDuration: TimeInterval) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
@@ -375,22 +430,85 @@ public class RemoteAudioAsset: AudioAsset {
             let player = players[playIndex]
 
             if player.timeControlStatus == .playing {
-                // Use parent class fade method
-                startVolumeRamp(from: player.volume, to: 0, player: player)
-
-                // Schedule the stop when fade is complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(self.FADEDELAY * 1000))) { [weak self, weak player] in
-                    guard let strongSelf = self, let strongPlayer = player else { return }
-
-                    if strongPlayer.volume < strongSelf.FADESTEP {
-                        strongSelf.stop()
-                    }
-                }
+                self.fadeOut(player: player, fadeOutDuration: fadeOutDuration)
             } else {
                 stop()
             }
         }
     }
+
+    func fadeOut(player: AVPlayer, fadeOutDuration: TimeInterval) {
+        cancelFade()
+        let steps = Int(fadeOutDuration / TimeInterval(FADE_DELAY))
+        guard steps > 0 else { return }
+        let fadeStep = player.volume / Float(steps)
+        var currentVolume: Float = player.volume
+        let currentTime = getCurrentTime()
+
+        log("Beginning fade out from volume %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, currentTime, fadeOutDuration, steps, FADE_DELAY)
+
+        var task: DispatchWorkItem!
+        task = DispatchWorkItem { [weak self] in
+            for _ in 0..<steps {
+                guard !task.isCancelled else { return }
+                if(!(self?.isPlaying())!){
+                    task.cancel()
+                    return
+                }
+                let previousCurrentVolume = currentVolume
+                currentVolume -= fadeStep
+                DispatchQueue.main.async {
+                    let thisTargetVolume = max(currentVolume, 0)
+                    self?.log("Fade out step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    player.volume = thisTargetVolume
+                }
+                Thread.sleep(forTimeInterval: TimeInterval(self?.FADE_DELAY ?? 0.08))
+            }
+            DispatchQueue.main.async {
+                player.pause()
+                self!.owner?.notifyListeners("complete", data: [
+                    "assetId": self?.assetId as Any
+                ])
+                self?.log("Fade out complete at time %2f", level: .debug, self?.getCurrentTime() ?? 0)
+            }
+        }
+        fadeTask = task
+        fadeQueue!.async(execute: task)
+    }
+
+    func fadeTo(player: AVPlayer, fadeOutDuration: TimeInterval, targetVolume: Float) {
+        cancelFade() // Cancel any ongoing fade
+        let steps = Int(fadeOutDuration / TimeInterval(FADE_DELAY))
+        guard steps > 0 else { return }
+        var currentVolume: Float = player.volume
+        let fadeStep = (targetVolume - currentVolume) / Float(steps)
+        let currentTime = getCurrentTime()
+
+        log("Beginning fade from volume %2f to %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, targetVolume, currentTime, fadeOutDuration, steps, FADE_DELAY)
+
+        var task: DispatchWorkItem!
+        task = DispatchWorkItem { [weak self] in
+            for _ in 0..<steps {
+                guard !task.isCancelled else { return }
+                if(!(self?.isPlaying())!){
+                    task.cancel()
+                    return
+                }
+                let previousCurrentVolume = currentVolume
+                currentVolume += fadeStep
+                DispatchQueue.main.async {
+                    let thisTargetVolume = min(max(currentVolume, 0), 1)
+                    self?.log("Fade to step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    player.volume = thisTargetVolume
+                }
+                Thread.sleep(forTimeInterval: TimeInterval(self?.FADE_DELAY ?? 0.08))
+            }
+            self?.log("Fade to complete at time %2f", level: .debug, self?.getCurrentTime() ?? 0)
+        }
+        fadeTask = task
+        fadeQueue!.async(execute: task)
+    }
+
 
     static func clearCache() {
         DispatchQueue.global(qos: .background).sync {
@@ -410,50 +528,5 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    // Add helper method for parent class
-    private func startVolumeRamp(from startVolume: Float, to endVolume: Float, player: AVPlayer) {
-        player.volume = startVolume
 
-        // Calculate steps
-        let steps = abs(endVolume - startVolume) / FADESTEP
-        guard steps > 0 else { return }
-
-        let timeInterval = FADEDELAY / steps
-        var currentStep = 0
-        let totalSteps = Int(ceil(steps))
-
-        stopFadeTimer()
-
-        // Ensure timer creation happens on main thread
-        DispatchQueue.main.async { [weak self, weak player] in
-            guard let self = self else { return }
-
-            self.fadeTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeInterval), repeats: true) { [weak self, weak player] timer in
-                guard let strongPlayer = player, let strongSelf = self else {
-                    timer.invalidate()
-                    return
-                }
-
-                currentStep += 1
-                let progress = Float(currentStep) / Float(totalSteps)
-                let newVolume = startVolume + progress * (endVolume - startVolume)
-
-                strongPlayer.volume = newVolume
-
-                if currentStep >= totalSteps {
-                    strongPlayer.volume = endVolume
-                    timer.invalidate()
-
-                    // Update timer reference on main thread
-                    DispatchQueue.main.async {
-                        strongSelf.fadeTimer = nil
-                    }
-                }
-            }
-
-            if let timer = self.fadeTimer {
-                RunLoop.current.add(timer, forMode: .common)
-            }
-        }
-    }
 }

@@ -15,6 +15,9 @@ import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 @UnstableApi
 public class StreamAudioAsset extends AudioAsset {
 
@@ -23,16 +26,14 @@ public class StreamAudioAsset extends AudioAsset {
     private final Uri uri;
     private float volume;
     private boolean isPrepared = false;
-    private final float initialVolume;
-    private static final float FADE_STEP = 0.05f;
-    private static final int FADE_DELAY_MS = 80; // 80ms between steps
     private static final long LIVE_OFFSET_MS = 5000; // 5 seconds behind live
+
 
     public StreamAudioAsset(NativeAudio owner, String assetId, Uri uri, float volume) throws Exception {
         super(owner, assetId, null, 0, volume);
         this.uri = uri;
         this.volume = volume;
-        this.initialVolume = volume;
+        this.fadeExecutor = Executors.newSingleThreadScheduledExecutor();
 
         createPlayer();
     }
@@ -138,7 +139,7 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     @Override
-    public void play(Double time) throws Exception {
+    public void play(double time, float volume) throws Exception {
         Log.d(TAG, "Play called with time: " + time + ", isPrepared: " + isPrepared);
         owner
             .getActivity()
@@ -151,21 +152,22 @@ public class StreamAudioAsset extends AudioAsset {
                             public void onPlaybackStateChanged(int state) {
                                 Log.d(TAG, "Play-wait state changed to: " + getStateString(state));
                                 if (state == Player.STATE_READY) {
-                                    startPlayback(time);
+                                    startPlayback(time, volume);
+                                    startCurrentTimeUpdates();
                                     player.removeListener(this);
                                 }
                             }
                         }
                     );
                 } else {
-                    startPlayback(time);
+                    startPlayback(time, volume);
                 }
             });
     }
 
-    private void startPlayback(Double time) {
+    private void startPlayback(double time, float volume) {
         Log.d(TAG, "Starting playback with time: " + time);
-        if (time != null) {
+        if (time != 0) {
             player.seekTo(Math.round(time * 1000));
         } else if (player.isCurrentMediaItemLive()) {
             player.seekToDefaultPosition();
@@ -173,6 +175,7 @@ public class StreamAudioAsset extends AudioAsset {
         player.setPlaybackParameters(new PlaybackParameters(1.0f));
         player.setVolume(volume);
         player.setPlayWhenReady(true);
+        startCurrentTimeUpdates();
     }
 
     @Override
@@ -181,8 +184,10 @@ public class StreamAudioAsset extends AudioAsset {
         owner
             .getActivity()
             .runOnUiThread(() -> {
+                cancelFade();
                 if (player.isPlaying()) {
                     player.setPlayWhenReady(false);
+                    stopCurrentTimeUpdates();
                     wasPlaying[0] = true;
                 }
             });
@@ -195,6 +200,7 @@ public class StreamAudioAsset extends AudioAsset {
             .getActivity()
             .runOnUiThread(() -> {
                 player.setPlayWhenReady(true);
+                startCurrentTimeUpdates();
             });
     }
 
@@ -203,6 +209,7 @@ public class StreamAudioAsset extends AudioAsset {
         owner
             .getActivity()
             .runOnUiThread(() -> {
+                cancelFade();
                 // First stop playback
                 player.stop();
                 // Reset player state
@@ -251,6 +258,7 @@ public class StreamAudioAsset extends AudioAsset {
             .runOnUiThread(() -> {
                 player.setRepeatMode(Player.REPEAT_MODE_ONE);
                 player.setPlayWhenReady(true);
+                startCurrentTimeUpdates();
             });
     }
 
@@ -259,6 +267,7 @@ public class StreamAudioAsset extends AudioAsset {
         owner
             .getActivity()
             .runOnUiThread(() -> {
+                cancelFade();
                 player.stop();
                 player.clearMediaItems();
                 player.release();
@@ -267,13 +276,21 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     @Override
-    public void setVolume(float volume) throws Exception {
+    public void setVolume(float volume, double duration) throws Exception {
         this.volume = volume;
         owner
             .getActivity()
             .runOnUiThread(() -> {
-                Log.d(TAG, "Setting volume to: " + volume);
-                player.setVolume(volume);
+                cancelFade();
+                try{
+                    if(this.isPlaying() && duration > 0){
+                        fadeTo(duration, volume);
+                    } else {
+                        player.setVolume(volume);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error setting volume", e);
+                }
             });
     }
 
@@ -327,8 +344,8 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     @Override
-    public void playWithFade(Double time) throws Exception {
-        Log.d(TAG, "PlayWithFade called with time: " + time);
+    public void playWithFadeIn(double time, float volume, double fadeInDurationMs) throws Exception {
+        Log.d(TAG, "playWithFadeIn called with time: " + time);
         owner
             .getActivity()
             .runOnUiThread(() -> {
@@ -339,21 +356,21 @@ public class StreamAudioAsset extends AudioAsset {
                             @Override
                             public void onPlaybackStateChanged(int state) {
                                 if (state == Player.STATE_READY) {
-                                    startPlaybackWithFade(time);
+                                    startPlaybackWithFade(time, volume, fadeInDurationMs);
                                     player.removeListener(this);
                                 }
                             }
                         }
                     );
                 } else {
-                    startPlaybackWithFade(time);
+                    startPlaybackWithFade(time, volume, fadeInDurationMs);
                 }
             });
     }
 
-    private void startPlaybackWithFade(Double time) {
+    private void startPlaybackWithFade(double time, float volume, double fadeInDurationMs) {
         if (!player.isPlayingAd()) { // Make sure we're not in an ad
-            if (time != null) {
+            if (time != 0) {
                 player.seekTo(Math.round(time * 1000));
             } else if (player.isCurrentMediaItemLive()) {
                 long liveEdge = player.getCurrentLiveOffset();
@@ -374,8 +391,9 @@ public class StreamAudioAsset extends AudioAsset {
                             // Start with volume 0
                             player.setVolume(0);
                             player.setPlayWhenReady(true);
+                            startCurrentTimeUpdates();
                             // Start fade after ensuring we're actually playing
-                            checkAndStartFade();
+                            checkAndStartFade(fadeInDurationMs, volume);
                         }
                     }
                 }
@@ -383,7 +401,7 @@ public class StreamAudioAsset extends AudioAsset {
         }
     }
 
-    private void checkAndStartFade() {
+    private void checkAndStartFade(double fadeInDurationMs, float volume) {
         final Handler handler = new Handler(Looper.getMainLooper());
         handler.postDelayed(
             new Runnable() {
@@ -392,7 +410,7 @@ public class StreamAudioAsset extends AudioAsset {
                 @Override
                 public void run() {
                     if (player.isPlaying()) {
-                        fadeIn();
+                        fadeIn(fadeInDurationMs, volume);
                     } else if (attempts < 10) { // Try for 5 seconds (10 * 500ms)
                         attempts++;
                         handler.postDelayed(this, 500);
@@ -403,88 +421,126 @@ public class StreamAudioAsset extends AudioAsset {
         );
     }
 
-    private void fadeIn() {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
+    private void fadeIn(double fadeInDurationMs, float volume) {
+        cancelFade();
+        fadeState = FadeState.FADE_IN;
+
+        final float targetVolume = volume;
+        final int steps = (int) (fadeInDurationMs / FADE_DELAY_MS);
+        final float fadeStep = targetVolume / steps;
+        final double currentTime = getCurrentPosition();
+        final double fadeInDuration = fadeInDurationMs / 1000.0;
+        final double FADE_DELAY = FADE_DELAY_MS / 1000.0;
+
+        Log.d(TAG,"Beginning fade in at time "+currentTime+" over "+fadeInDuration+"s to target volume "+targetVolume+" in "+steps+" steps (step duration: "+FADE_DELAY+"s");
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(new Runnable() {
             float currentVolume = 0;
 
             @Override
             public void run() {
-                if (player != null && player.isPlaying() && currentVolume < volume) {
-                    currentVolume += FADE_STEP;
-                    if (currentVolume > volume) currentVolume = volume;
-                    player.setVolume(currentVolume);
-                    Log.d(TAG, "Fading in: volume = " + currentVolume);
-                    handler.postDelayed(this, FADE_DELAY_MS);
+                if (fadeState != FadeState.FADE_IN || currentVolume >= targetVolume) {
+                    fadeState = FadeState.NONE;
+                    cancelFade();
+                    Log.v(TAG, "Fade in complete at time " + getCurrentPosition());
+                    return;
                 }
+                final float previousCurrentVolume = currentVolume;
+                currentVolume += fadeStep;
+                final float resolvedTargetVolume = Math.min(currentVolume, targetVolume);
+                Log.d(TAG, "Fade in step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + resolvedTargetVolume);
+                player.setVolume(resolvedTargetVolume);
             }
-        };
-        handler.post(fadeRunnable);
+        }, 0, FADE_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     @Override
-    public void stopWithFade() throws Exception {
+    public void stopWithFade(double fadeOutDurationMs) throws Exception {
         owner
             .getActivity()
             .runOnUiThread(() -> {
                 if (player.isPlaying()) {
-                    fadeOut();
+                    fadeOut(fadeOutDurationMs);
                 }
             });
     }
 
-    private void fadeOut() {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
-            float currentVolume = player.getVolume();
+    private void fadeOut(double fadeOutDurationMs) {
+        cancelFade();
+        fadeState = FadeState.FADE_OUT;
+
+        final float initialVolume = player.getVolume();
+        final int steps = (int) (fadeOutDurationMs / FADE_DELAY_MS);
+        final float fadeStep = initialVolume / steps;
+        final double currentTime = getCurrentPosition();
+        final double fadeOutDuration = fadeOutDurationMs / 1000.0;
+        final double FADE_DELAY = FADE_DELAY_MS / 1000.0;
+
+        Log.d(TAG, "Beginning fade out from volume " + initialVolume + " at time " + currentTime + " over " + fadeOutDuration + "s in " + steps + " steps (step duration: " + FADE_DELAY + "s)");
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(new Runnable() {
+            float currentVolume = initialVolume;
 
             @Override
             public void run() {
-                if (currentVolume > FADE_STEP) {
-                    currentVolume -= FADE_STEP;
-                    player.setVolume(currentVolume);
-                    Log.d(TAG, "Fading out: volume = " + currentVolume);
-                    handler.postDelayed(this, FADE_DELAY_MS);
-                } else {
-                    player.setVolume(0);
-                    // Stop and reset player
-                    player.stop();
-                    player.clearMediaItems();
-                    isPrepared = false;
-
-                    // Create new media source
-                    DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                        .setConnectTimeoutMs(15000)
-                        .setReadTimeoutMs(15000)
-                        .setUserAgent("ExoPlayer");
-
-                    HlsMediaSource mediaSource = new HlsMediaSource.Factory(httpDataSourceFactory)
-                        .setAllowChunklessPreparation(true)
-                        .setTimestampAdjusterInitializationTimeoutMs(LIVE_OFFSET_MS)
-                        .createMediaSource(MediaItem.fromUri(uri));
-
-                    // Set new media source and prepare
-                    player.setMediaSource(mediaSource);
-                    player.prepare();
-
-                    // Add listener for preparation completion
-                    player.addListener(
-                        new Player.Listener() {
-                            @Override
-                            public void onPlaybackStateChanged(int state) {
-                                Log.d(TAG, "Fade-stop state changed to: " + getStateString(state));
-                                if (state == Player.STATE_READY) {
-                                    isPrepared = true;
-                                    player.removeListener(this);
-                                }
-                            }
-                        }
-                    );
+                if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
+                    fadeState = FadeState.NONE;
+                    try {
+                        stop();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error stopping playback", e);
+                    }
+                    cancelFade();
+                    Log.v(TAG, "Fade out complete at time " + getCurrentPosition());
+                    return;
                 }
+                final float previousCurrentVolume = currentVolume;
+                currentVolume += fadeStep;
+                final float thisTargetVolume = Math.max(currentVolume, 0);
+                Log.d(TAG, "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
+                player.setVolume(thisTargetVolume);
             }
-        };
-        handler.post(fadeRunnable);
+        }, 0, FADE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void fadeTo(double fadeDurationMs, float targetVolume) {
+        cancelFade();
+        fadeState = FadeState.FADE_TO;
+
+        final int steps = (int) (fadeDurationMs / FADE_DELAY_MS);
+        final float initialVolume = player.getVolume();
+        final float fadeStep = targetVolume / steps;
+        final double currentTime = getCurrentPosition();
+        final double fadeOutDuration = fadeDurationMs / 1000.0;
+        final double FADE_DELAY = FADE_DELAY_MS / 1000.0;
+
+        Log.d(TAG, "Beginning fade from volume " + initialVolume + " to " + targetVolume + " at time " + currentTime + " over " + fadeOutDuration + "s in " + steps + " steps (step duration: " + FADE_DELAY + "s)");
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(new Runnable() {
+            float currentVolume = initialVolume;
+
+            @Override
+            public void run() {
+                if (fadeState != FadeState.FADE_TO || !player.isPlaying()) {
+                    fadeState = FadeState.NONE;
+                    cancelFade();
+                    Log.v(TAG, "Fade to complete at time " + getCurrentPosition());
+                    return;
+                }
+                final float previousCurrentVolume = currentVolume;
+                currentVolume += fadeStep;
+                final float resolvedTargetVolume = Math.min(Math.max(currentVolume, 0), 1);
+                Log.d(TAG, "Fade to step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + resolvedTargetVolume);
+                player.setVolume(resolvedTargetVolume);
+            }
+        }, 0, FADE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void cancelFade() {
+        if (fadeTask != null && !fadeTask.isCancelled()) {
+            fadeTask.cancel(true);
+        }
+        fadeState = FadeState.NONE;
     }
 
     @Override
@@ -495,5 +551,62 @@ public class StreamAudioAsset extends AudioAsset {
                 Log.d(TAG, "Setting playback rate to: " + rate);
                 player.setPlaybackParameters(new PlaybackParameters(rate));
             });
+    }
+
+    @Override
+    protected void startCurrentTimeUpdates() {
+        Log.d(TAG, "Starting timer updates");
+        if (currentTimeHandler == null) {
+            currentTimeHandler = new Handler(Looper.getMainLooper());
+        }
+
+        // Wait for player to be truly ready
+        currentTimeHandler.postDelayed(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        if (player.getPlaybackState() == Player.STATE_READY) {
+                            startTimeUpdateLoop();
+                        } else {
+                            // Check again in 100ms
+                            currentTimeHandler.postDelayed(this, 100);
+                        }
+                    }
+                },
+                100
+        );
+    }
+
+    private void startTimeUpdateLoop() {
+        currentTimeRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (player.getPlaybackState() == Player.STATE_READY && player.isPlaying()) {
+                        double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
+                        Log.d(TAG, "Play timer update: currentTime = " + currentTime);
+                        owner.notifyCurrentTime(assetId, currentTime);
+                        currentTimeHandler.postDelayed(this, 100);
+                        return;
+                    }
+                    Log.d(TAG, "Stopping play timer - not playing or not ready");
+                    stopCurrentTimeUpdates();
+                    dispatchComplete();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting current time", e);
+                    stopCurrentTimeUpdates();
+                }
+            }
+        };
+        currentTimeHandler.post(currentTimeRunnable);
+    }
+
+    @Override
+    void stopCurrentTimeUpdates() {
+        Log.d(TAG, "Stopping play timer updates");
+        if (currentTimeHandler != null) {
+            currentTimeHandler.removeCallbacks(currentTimeRunnable);
+            currentTimeHandler = null;
+        }
     }
 }
