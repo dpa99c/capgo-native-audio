@@ -321,7 +321,7 @@ public class RemoteAudioAsset extends AudioAsset {
                     public void run() {
                         cancelFade();
                         for (ExoPlayer player : players) {
-                            if(player == null) continue;
+                            if (player == null) continue;
                             if (player.isPlaying() && duration > 0) {
                                 fadeTo(player, (float) duration, volume);
                             } else {
