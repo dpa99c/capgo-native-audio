@@ -77,7 +77,9 @@ var capacitorCapacitorNativeAudio = (function (exports, core) {
                     const slashPrefix = options.assetPath.startsWith('/') ? '' : '/';
                     options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
                 }
-                const audio = new Audio(options.assetPath);
+                const audio = document.createElement("audio");
+                audio.crossOrigin = "anonymous";
+                audio.src = options.assetPath;
                 audio.autoplay = false;
                 audio.loop = false;
                 audio.preload = 'metadata';
