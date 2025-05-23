@@ -94,8 +94,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         const slashPrefix: string = options.assetPath.startsWith('/') ? '' : '/';
         options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
       }
-      const audio: HTMLAudioElement = document.createElement("audio");
-      audio.crossOrigin = "anonymous";
+      const audio: HTMLAudioElement = document.createElement('audio');
+      audio.crossOrigin = 'anonymous';
       audio.src = options.assetPath;
       audio.autoplay = false;
       audio.loop = false;
