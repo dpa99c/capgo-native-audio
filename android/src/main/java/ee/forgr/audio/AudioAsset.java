@@ -377,7 +377,7 @@ public class AudioAsset {
                             TAG,
                             "Fade in step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + resolvedTargetVolume
                         );
-                        if(audio != null) audio.setVolume(resolvedTargetVolume);
+                        if (audio != null) audio.setVolume(resolvedTargetVolume);
                     } catch (Exception e) {
                         Log.e(TAG, "Error during fade in", e);
                         cancelFade();
@@ -402,7 +402,7 @@ public class AudioAsset {
         cancelFade();
         fadeState = FadeState.FADE_OUT;
 
-        if(audio == null) return;
+        if (audio == null) return;
 
         final int steps = Math.max(1, (int) (fadeOutDurationMs / FADE_DELAY_MS));
         final float initialVolume = audio.getVolume();
@@ -444,7 +444,7 @@ public class AudioAsset {
                             TAG,
                             "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume
                         );
-                        if(audio != null) audio.setVolume(thisTargetVolume);
+                        if (audio != null) audio.setVolume(thisTargetVolume);
                     } catch (Exception e) {
                         Log.e(TAG, "Error during fade out", e);
                         cancelFade();
@@ -461,7 +461,7 @@ public class AudioAsset {
         cancelFade();
         fadeState = FadeState.FADE_TO;
 
-        if(audio == null) return;
+        if (audio == null) return;
 
         final int steps = Math.max(1, (int) (fadeDurationMs / FADE_DELAY_MS));
         final float minVolume = zeroVolume;
@@ -494,7 +494,7 @@ public class AudioAsset {
 
                 @Override
                 public void run() {
-                    if (audio != null && fadeState != FadeState.FADE_TO || !audio.isPlaying() || currentStep >= steps) {
+                    if ((audio != null && fadeState != FadeState.FADE_TO) || !audio.isPlaying() || currentStep >= steps) {
                         fadeState = FadeState.NONE;
                         cancelFade();
                         Log.d(TAG, "Fade to complete at time " + getCurrentPosition());
@@ -504,7 +504,7 @@ public class AudioAsset {
                     try {
                         currentVolume *= (float) ratio;
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
-                        if(audio != null) audio.setVolume(currentVolume);
+                        if (audio != null) audio.setVolume(currentVolume);
                         Log.v(TAG, "Fade to step " + currentStep + ": volume set to " + currentVolume);
                         currentStep++;
                     } catch (Exception e) {
