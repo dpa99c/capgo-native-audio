@@ -19,16 +19,14 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private static readonly CURRENT_TIME_UPDATE_INTERVAL: number = 100;
 
   private static readonly AUDIO_PRELOAD_OPTIONS_MAP: Map<string, PreloadOptions> = new Map<string, PreloadOptions>();
+  private static readonly AUDIO_DATA_MAP: Map<string, any> = new Map<string, any>();
   private static readonly AUDIO_ASSET_BY_ASSET_ID: Map<string, AudioAsset> = new Map<string, AudioAsset>();
   private static readonly AUDIO_CONTEXT_MAP: Map<HTMLMediaElement, AudioContext> = new Map();
   private static readonly MEDIA_ELEMENT_SOURCE_MAP: Map<HTMLMediaElement, MediaElementAudioSourceNode> = new Map();
   private static readonly GAIN_NODE_MAP: Map<HTMLMediaElement, GainNode> = new Map();
-  private static readonly INITIAL_VOLUME_MAP: Map<HTMLMediaElement, number> = new Map();
 
   private currentTimeIntervals: Map<string, number> = new Map();
 
-  private fadeOutTimer = 0;
-  private startTimer = 0;
   private zeroVolume = 0.0001; // Avoids the gain node being set to 0 for exponential ramping
 
   async resume(options: Assets): Promise<void> {
@@ -42,7 +40,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   async pause(options: Assets): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
-    this.clearFadeOutTimer();
+    this.clearFadeOutToStopTimer(options.assetId);
     this.stopCurrentTimeUpdates(options.assetId);
     return audio.pause();
   }
@@ -106,13 +104,15 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       });
       audio.addEventListener('error', () => reject('Error loading audio file'));
 
+      const data = this.getAudioAssetData(options.assetId);
       if (options.volume) {
         audio.volume = options.volume;
-        NativeAudioWeb.INITIAL_VOLUME_MAP.set(audio, options.volume);
+        data.volume = options.volume;
       } else {
-        NativeAudioWeb.INITIAL_VOLUME_MAP.set(audio, audio.volume);
+        data.volume = audio.volume;
       }
       NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.set(options.assetId, new AudioAsset(audio));
+      this.setAudioAssetData(options.assetId, data);
     });
   }
   private onEnded(assetId: string): void {
@@ -120,13 +120,16 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   }
 
   async play(options: AssetPlayOptions): Promise<void> {
-    this.clearFadeOutTimer();
+    this.clearFadeOutToStopTimer(options.assetId);
     const { delay = 0 } = options;
     if (delay > 0) {
-      this.startTimer = setTimeout(() => {
+      const data = this.getAudioAssetData(options.assetId);
+      data.startTimer = setTimeout(() => {
         this.doPlay(options);
-        this.startTimer = 0;
+        data.startTimer = 0;
+        this.setAudioAssetData(options.assetId, data);
       }, delay * 1000);
+      this.setAudioAssetData(options.assetId, data);
     } else {
       await this.doPlay(options);
     }
@@ -154,12 +157,14 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       once: true,
     });
 
+    const data = this.getAudioAssetData(assetId);
+
     if (options.volume) {
       audio.volume = options.volume;
-      NativeAudioWeb.INITIAL_VOLUME_MAP.set(audio, options.volume);
+      data.volume = options.volume;
       this.setGainNodeVolume(audio, options.volume);
-    } else if (!NativeAudioWeb.INITIAL_VOLUME_MAP.has(audio)) {
-      NativeAudioWeb.INITIAL_VOLUME_MAP.set(audio, audio.volume);
+    } else if (!data.volume) {
+      data.volume = audio.volume;
     }
 
     audio.play();
@@ -168,21 +173,29 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (options.fadeIn) {
       const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.setGainNodeVolume(audio, 0);
-      const initialVolume = NativeAudioWeb.INITIAL_VOLUME_MAP.get(audio) ?? 1;
+      const initialVolume = data.volume ?? 1;
       this.linearRampGainNodeVolume(audio, initialVolume, fadeDuration);
+      data.fadeInInProgress = true;
+      data.fadeInTimer = setTimeout(() => {
+        data.fadeInInProgress = false;
+        data.fadeInTimer = 0;
+        this.setAudioAssetData(assetId, data);
+      }, fadeDuration * 1000);
     }
 
     if (options.fadeOut && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
-      const fadeDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
-
-      const fadeOutStartTime = options.fadeOutStartTime || audio.duration - fadeDuration;
-
-      this.fadeOutTimer = setTimeout(() => {
-        this.setGainNodeVolume(audio, audio.volume);
-        this.linearRampGainNodeVolume(audio, 0, fadeDuration);
-        this.fadeOutTimer = 0;
-      }, fadeOutStartTime * 1000);
+      const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
+      const fadeOutStartTime = options.fadeOutStartTime || audio.duration - fadeOutDuration;
+      data.fadeOut = true;
+      data.fadeOutStartTime = fadeOutStartTime;
+      data.fadeOutDuration = fadeOutDuration;
     }
+
+    this.setAudioAssetData(assetId, data);
+  }
+
+  private doFadeOut(audio: HTMLAudioElement, fadeDuration: number): void {
+    this.linearRampGainNodeVolume(audio, 0, fadeDuration);
   }
 
   async loop(options: Assets): Promise<void> {
@@ -195,16 +208,18 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   async stop(options: AssetStopOptions): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
+    const data = this.getAudioAssetData(options.assetId);
 
-    this.clearFadeOutTimer();
+    this.clearFadeOutToStopTimer(options.assetId);
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
-    if (!audio.paused && options.fadeOut) {
-      const fadeDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
+    if (!audio.paused && options.fadeOut && !data.fadeOutInProgress) {
 
-      this.linearRampGainNodeVolume(audio, 0, fadeDuration);
-      this.fadeOutTimer = setTimeout(() => {
+      this.doFadeOut(audio, data.fadeDuration);
+      data.fadeOutInProgress = true;
+      data.fadeOutToStopTimer = setTimeout(() => {
         this.doStop(audio, options);
-      }, fadeDuration * 1000);
+      }, data.fadeDuration * 1000);
+      this.setAudioAssetData(options.assetId, data);
     } else {
       this.doStop(audio, options);
     }
@@ -221,27 +236,35 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     for (const [assetId, asset] of NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.entries()) {
       if (asset.audio === audio) {
         this.stopCurrentTimeUpdates(assetId);
+        this.clearFadeOutToStopTimer(assetId);
+        this.clearStartTimer(assetId);
+        this.cancelGainNodeRamp(audio);
+        const data = this.getAudioAssetData(assetId);
+        data.fadeOutInProgress = data.fadeOutInProgress = false;
+        const initialVolume = data.volume ?? 1;
+        this.setGainNodeVolume(audio, initialVolume);
+        this.setAudioAssetData(assetId, data);
         break;
       }
     }
-    this.clearFadeOutTimer();
-    this.clearStartTimer();
-    this.cancelGainNodeRamp(audio);
-    const initialVolume = NativeAudioWeb.INITIAL_VOLUME_MAP.get(audio) ?? 1;
-    this.setGainNodeVolume(audio, initialVolume);
   }
 
-  private clearFadeOutTimer(): void {
-    if (this.fadeOutTimer) {
-      clearTimeout(this.fadeOutTimer);
-      this.fadeOutTimer = 0;
+  private clearFadeOutToStopTimer(assetId: string): void {
+    const data = this.getAudioAssetData(assetId);
+    if (data && data.fadeOutToStopTimer) {
+      clearTimeout(data.fadeOutToStopTimer);
+      data.fadeOutToStopTimer = 0;
+      data.fadeOutInProgress = false;
+      this.setAudioAssetData(assetId, data);
     }
   }
 
-  private clearStartTimer(): void {
-    if (this.startTimer) {
-      clearTimeout(this.startTimer);
-      this.startTimer = 0;
+  private clearStartTimer(assetId: string): void {
+    const data = this.getAudioAssetData(assetId);
+    if (data.startTimer) {
+      clearTimeout(data.startTimer);
+      data.startTimer = 0;
+      this.setAudioAssetData(assetId, data);
     }
   }
 
@@ -250,9 +273,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.reset(audio);
     NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.delete(options.assetId);
     NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.delete(options.assetId);
+    NativeAudioWeb.AUDIO_DATA_MAP.delete(options.assetId);
 
     this.cleanupAudioContext(audio);
-    NativeAudioWeb.INITIAL_VOLUME_MAP.delete(audio);
   }
 
   private cleanupAudioContext(audio: HTMLMediaElement): void {
@@ -277,6 +300,14 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (typeof options?.volume !== 'number') {
       throw 'no volume provided';
     }
+    const data = this.getAudioAssetData(options.assetId);
+    if(data.fadeInInProgress){
+      throw 'Cannot set volume while fade-in is in progress';
+    }
+    if(data.fadeOutInProgress){
+        throw 'Cannot set volume while fade-out is in progress';
+    }
+
     const { volume, duration = 0 } = options;
 
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
@@ -409,6 +440,12 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       if (!audio.paused) {
         const currentTime = Math.round(audio.currentTime * 10) / 10; // Round to nearest 100ms
         this.notifyListeners('currentTime', { assetId, currentTime });
+        const data = this.getAudioAssetData(assetId);
+        if (data.fadeOut && !data.fadeOutInProgress && audio.currentTime >= data.fadeOutStartTime) {
+          data.fadeOutInProgress = true;
+          NativeAudioWeb.AUDIO_DATA_MAP.set(assetId, data);
+          this.doFadeOut(audio, data.fadeOutDuration);
+        }
       } else {
         this.stopCurrentTimeUpdates(assetId);
       }
@@ -430,6 +467,16 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       }
       this.currentTimeIntervals.clear();
     }
+  }
+
+  private getAudioAssetData(assetId: string): any {
+    return NativeAudioWeb.AUDIO_DATA_MAP.get(assetId) || {};
+  }
+
+  private setAudioAssetData(assetId: string, data: any): void {
+    const currentData = NativeAudioWeb.AUDIO_DATA_MAP.get(assetId) || {};
+    const newData = { ...currentData, ...data };
+    NativeAudioWeb.AUDIO_DATA_MAP.set(assetId, newData);
   }
 }
 
