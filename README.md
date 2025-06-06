@@ -320,14 +320,14 @@ Play an audio file
 ### pause(...)
 
 ```typescript
-pause(options: Assets) => Promise<void>
+pause(options: AssetPauseOptions) => Promise<void>
 ```
 
 Pause an audio file
 
-| Param         | Type                                      |
-| ------------- | ----------------------------------------- |
-| **`options`** | <code><a href="#assets">Assets</a></code> |
+| Param         | Type                                                            |
+| ------------- | --------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetpauseoptions">AssetPauseOptions</a></code> |
 
 **Since:** 5.0.0
 
@@ -337,14 +337,33 @@ Pause an audio file
 ### resume(...)
 
 ```typescript
-resume(options: Assets) => Promise<void>
+resume(options: AssetResumeOptions) => Promise<void>
 ```
 
 Resume an audio file
 
+| Param         | Type                                                              |
+| ------------- | ----------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetresumeoptions">AssetResumeOptions</a></code> |
+
+**Since:** 5.0.0
+
+--------------------
+
+
+### isPaused(...)
+
+```typescript
+isPaused(options: Assets) => Promise<{ isPaused: boolean; }>
+```
+
+Indicate if an audio file is paused
+
 | Param         | Type                                      |
 | ------------- | ----------------------------------------- |
 | **`options`** | <code><a href="#assets">Assets</a></code> |
+
+**Returns:** <code>Promise&lt;{ isPaused: boolean; }&gt;</code>
 
 **Since:** 5.0.0
 
@@ -602,6 +621,24 @@ Clear the audio cache for remote audio files
 | **`fadeInDuration`**   | <code>number</code>  | Fade in duration in seconds. Only used if fadeIn is true. Default is 1s.                                                                       |
 | **`fadeOutDuration`**  | <code>number</code>  | Fade out duration in seconds. Only used if fadeOut is true. Default is 1s.                                                                     |
 | **`fadeOutStartTime`** | <code>number</code>  | Time in seconds from the start of the audio to start fading out. Only used if fadeOut is true. Default is fadeOutDuration before end of audio. |
+
+
+#### AssetPauseOptions
+
+| Prop                  | Type                 | Description                                  |
+| --------------------- | -------------------- | -------------------------------------------- |
+| **`assetId`**         | <code>string</code>  | Asset Id, unique identifier of the file      |
+| **`fadeOut`**         | <code>boolean</code> | Whether to fade out the audio before pausing |
+| **`fadeOutDuration`** | <code>number</code>  | Fade out duration in seconds. Default is 1s. |
+
+
+#### AssetResumeOptions
+
+| Prop                 | Type                 | Description                                 |
+| -------------------- | -------------------- | ------------------------------------------- |
+| **`assetId`**        | <code>string</code>  | Asset Id, unique identifier of the file     |
+| **`fadeIn`**         | <code>boolean</code> | Whether to fade in the audio during resume  |
+| **`fadeInDuration`** | <code>number</code>  | Fade in duration in seconds. Default is 1s. |
 
 
 #### Assets

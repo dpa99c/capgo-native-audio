@@ -124,6 +124,42 @@ export interface AssetStopOptions {
   fadeOutDuration?: number;
 }
 
+export interface AssetPauseOptions {
+  /**
+   * Asset Id, unique identifier of the file
+   */
+  assetId: string;
+
+  /**
+   * Whether to fade out the audio before pausing
+   */
+  fadeOut?: boolean;
+
+  /**
+   * Fade out duration in seconds.
+   * Default is 1s.
+   */
+  fadeOutDuration?: number;
+}
+
+export interface AssetResumeOptions {
+  /**
+   * Asset Id, unique identifier of the file
+   */
+  assetId: string;
+
+  /**
+   * Whether to fade in the audio during resume
+   */
+  fadeIn?: boolean;
+
+  /**
+   * Fade in duration in seconds.
+   * Default is 1s.
+   */
+  fadeInDuration?: number;
+}
+
 export interface ConfigureOptions {
   /**
    * focus the audio with Audio Focus
@@ -218,18 +254,26 @@ export interface NativeAudio {
   /**
    * Pause an audio file
    * @since 5.0.0
-   * @param option {@link Assets}
+   * @param option {@link AssetPauseOptions}
    * @returns
    */
-  pause(options: Assets): Promise<void>;
+  pause(options: AssetPauseOptions): Promise<void>;
 
   /**
    * Resume an audio file
    * @since 5.0.0
+   * @param option {@link AssetResumeOptions}
+   * @returns
+   */
+  resume(options: AssetResumeOptions): Promise<void>;
+
+  /**
+   * Indicate if an audio file is paused
+   * @since 5.0.0
    * @param option {@link Assets}
    * @returns
    */
-  resume(options: Assets): Promise<void>;
+  isPaused(options: Assets): Promise<{ isPaused: boolean }>;
 
   /**
    * Stop an audio file
