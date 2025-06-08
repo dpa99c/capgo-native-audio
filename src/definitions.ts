@@ -268,14 +268,6 @@ export interface NativeAudio {
   resume(options: AssetResumeOptions): Promise<void>;
 
   /**
-   * Indicate if an audio file is paused
-   * @since 5.0.0
-   * @param option {@link Assets}
-   * @returns
-   */
-  isPaused(options: Assets): Promise<{ isPaused: boolean }>;
-
-  /**
    * Stop an audio file
    * @since 5.0.0
    * @param option {@link Assets}

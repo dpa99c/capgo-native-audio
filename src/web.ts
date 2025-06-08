@@ -71,11 +71,6 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     return audio.pause();
   }
 
-  async isPaused(options: Assets): Promise<{ isPaused: boolean }> {
-    const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
-    return { isPaused: audio.paused };
-  }
-
   async setCurrentTime(options: AssetSetTime): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     audio.currentTime = options.time;
