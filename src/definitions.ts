@@ -363,4 +363,13 @@ export interface NativeAudio {
    * @returns {Promise<void>}
    */
   clearCache(): Promise<void>;
+
+  /**
+   * Set the debug mode
+   * @since 6.5.0
+   * @param options - Options to enable or disable debug mode
+   * @param {boolean} options.enabled - Whether to enable or disable debug mode
+   * @returns {Promise<void>}
+   */
+  setDebugMode(options: { enabled: boolean }): Promise<void>;
 }
