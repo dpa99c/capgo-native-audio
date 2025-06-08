@@ -30,16 +30,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private zeroVolume = 0.0001; // Avoids the gain node being set to 0 for exponential ramping
 
   async resume(options: AssetResumeOptions): Promise<void> {
-    const data = this.getAudioAssetData(options.assetId);
-
     if(options?.fadeIn) {
-      if(data.fadeInInProgress) {
-        console.warn('Fade-in is already in progress for assetId:', options.assetId);
-      }else{
-        const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
-        const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
-        this.doFadeIn(audio, fadeDuration);
-      }
+      const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
+      const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
+      this.doFadeIn(audio, fadeDuration);
     }
     this.doResume(options.assetId);
   }
@@ -58,14 +52,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const data = this.getAudioAssetData(options.assetId);
 
     if(options?.fadeOut){
-      if(data.fadeOutInProgress){
-        console.warn('Fade-out is already in progress - cancelling it:', options.assetId);
-        this.cancelGainNodeRamp(audio);
-      }
-
+      this.cancelGainNodeRamp(audio);
       const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeOut(audio, fadeOutDuration);
-      data.fadeOutInProgress = true;
       data.fadeOutToStopTimer = setTimeout(() => {
         this.doPause(options.assetId);
       }, fadeOutDuration * 1000);
@@ -233,9 +222,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.setGainNodeVolume(audio, 0);
     const initialVolume = data.volume ?? 1;
     this.linearRampGainNodeVolume(audio, initialVolume, fadeDuration);
-    data.fadeInInProgress = true;
     data.fadeInTimer = setTimeout(() => {
-      data.fadeInInProgress = false;
       data.fadeInTimer = 0;
       this.setAudioAssetData(audio.id, data);
     }, fadeDuration * 1000);
@@ -263,7 +250,6 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (!audio.paused && options.fadeOut) {
       const fadeDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeOut(audio, fadeDuration);
-      data.fadeOutInProgress = true;
       data.fadeOutToStopTimer = setTimeout(() => {
         this.doStop(audio, options);
       }, fadeDuration * 1000);
@@ -288,7 +274,6 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         this.clearStartTimer(assetId);
         this.cancelGainNodeRamp(audio);
         const data = this.getAudioAssetData(assetId);
-        data.fadeOutInProgress = data.fadeOutInProgress = false;
         const initialVolume = data.volume ?? 1;
         this.setGainNodeVolume(audio, initialVolume);
         this.setAudioAssetData(assetId, data);
@@ -302,7 +287,6 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (data && data.fadeOutToStopTimer) {
       clearTimeout(data.fadeOutToStopTimer);
       data.fadeOutToStopTimer = 0;
-      data.fadeOutInProgress = false;
       this.setAudioAssetData(assetId, data);
     }
   }
@@ -347,13 +331,6 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   async setVolume(options: AssetVolume): Promise<void> {
     if (typeof options?.volume !== 'number') {
       throw 'no volume provided';
-    }
-    const data = this.getAudioAssetData(options.assetId);
-    if(data.fadeInInProgress){
-      throw 'Cannot set volume while fade-in is in progress';
-    }
-    if(data.fadeOutInProgress){
-        throw 'Cannot set volume while fade-out is in progress';
     }
 
     const { volume, duration = 0 } = options;
@@ -489,11 +466,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         const currentTime = Math.round(audio.currentTime * 10) / 10; // Round to nearest 100ms
         this.notifyListeners('currentTime', { assetId, currentTime });
         const data = this.getAudioAssetData(assetId);
-        if(data.fadeOutInProgress) {
-          this.cancelGainNodeRamp(audio);
-        }
+
         if (data.fadeOut && audio.currentTime >= data.fadeOutStartTime) {
-          data.fadeOutInProgress = true;
+          this.cancelGainNodeRamp(audio);
           this.setAudioAssetData(assetId, data);
           this.doFadeOut(audio, data.fadeOutDuration);
         }
