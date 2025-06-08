@@ -59,17 +59,17 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     if(options?.fadeOut){
       if(data.fadeOutInProgress){
-        console.warn('Fade-out is already in progress for assetId:', options.assetId);
-        this.doPause(options.assetId);
-      }else{
-        const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
-        this.doFadeOut(audio, fadeOutDuration);
-        data.fadeOutInProgress = true;
-        data.fadeOutToStopTimer = setTimeout(() => {
-            this.doPause(options.assetId);
-        }, fadeOutDuration * 1000);
-        this.setAudioAssetData(options.assetId, data);
+        console.warn('Fade-out is already in progress - cancelling it:', options.assetId);
+        this.cancelGainNodeRamp(audio);
       }
+
+      const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
+      this.doFadeOut(audio, fadeOutDuration);
+      data.fadeOutInProgress = true;
+      data.fadeOutToStopTimer = setTimeout(() => {
+        this.doPause(options.assetId);
+      }, fadeOutDuration * 1000);
+      this.setAudioAssetData(options.assetId, data);
     }else{
         this.doPause(options.assetId);
     }
@@ -260,7 +260,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     this.clearFadeOutToStopTimer(options.assetId);
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
-    if (!audio.paused && options.fadeOut && !data.fadeOutInProgress) {
+    if (!audio.paused && options.fadeOut) {
       const fadeDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeOut(audio, fadeDuration);
       data.fadeOutInProgress = true;
@@ -489,7 +489,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         const currentTime = Math.round(audio.currentTime * 10) / 10; // Round to nearest 100ms
         this.notifyListeners('currentTime', { assetId, currentTime });
         const data = this.getAudioAssetData(assetId);
-        if (data.fadeOut && !data.fadeOutInProgress && audio.currentTime >= data.fadeOutStartTime) {
+        if(data.fadeOutInProgress) {
+          this.cancelGainNodeRamp(audio);
+        }
+        if (data.fadeOut && audio.currentTime >= data.fadeOutStartTime) {
           data.fadeOutInProgress = true;
           this.setAudioAssetData(assetId, data);
           this.doFadeOut(audio, data.fadeOutDuration);
