@@ -334,6 +334,16 @@ public class RemoteAudioAsset extends AudioAsset {
     }
 
     @Override
+    public float getVolume() throws Exception {
+        if (players.isEmpty()) {
+            throw new Exception("No ExoPlayer available");
+        }
+
+        final ExoPlayer player = players.get(playIndex);
+        return player != null ? player.getVolume() : 0;
+    }
+
+    @Override
     public boolean isPlaying() throws Exception {
         if (players.isEmpty() || !isPrepared) return false;
 
@@ -547,7 +557,7 @@ public class RemoteAudioAsset extends AudioAsset {
         );
     }
 
-    public void stopWithFade(float fadeOutDurationMs) throws Exception {
+    public void stopWithFade(float fadeOutDurationMs, boolean asPause) throws Exception {
         if (players.isEmpty()) {
             return;
         }
@@ -557,12 +567,12 @@ public class RemoteAudioAsset extends AudioAsset {
             .getActivity()
             .runOnUiThread(() -> {
                 if (player != null && player.isPlaying()) {
-                    fadeOut(player, fadeOutDurationMs);
+                    fadeOut(player, fadeOutDurationMs, asPause);
                 }
             });
     }
 
-    private void fadeOut(final ExoPlayer player, float fadeOutDurationMs) {
+    private void fadeOut(final ExoPlayer player, float fadeOutDurationMs, boolean asPause) {
         cancelFade();
         fadeState = FadeState.FADE_OUT;
 
@@ -597,8 +607,15 @@ public class RemoteAudioAsset extends AudioAsset {
                             .getActivity()
                             .runOnUiThread(() -> {
                                 if (player != null && player.isPlaying()) {
-                                    player.setVolume(0);
-                                    player.stop();
+                                    if(asPause) {
+                                        player.pause();
+                                        Log.v(TAG, "Faded out to pause at time " + getCurrentPosition());
+                                    }else{
+                                        player.setVolume(0);
+                                        player.stop();
+                                        Log.v(TAG, "Faded out to stop at time " + getCurrentPosition());
+                                    }
+
                                 }
                             });
                         cancelFade();
@@ -733,19 +750,29 @@ public class RemoteAudioAsset extends AudioAsset {
             @Override
             public void run() {
                 try {
+                    boolean isPaused = false;
                     if (!players.isEmpty()) {
                         ExoPlayer player = players.get(playIndex);
-                        if (player != null && player.getPlaybackState() == Player.STATE_READY && player.isPlaying()) {
-                            double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
-                            Log.d(TAG, "Play timer update: currentTime = " + currentTime);
-                            owner.notifyCurrentTime(assetId, currentTime);
-                            currentTimeHandler.postDelayed(this, 100);
-                            return;
+                        if (player != null && player.getPlaybackState() == Player.STATE_READY) {
+                            if(player.isPlaying()){
+                                double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
+                                Log.d(TAG, "Play timer update: currentTime = " + currentTime);
+                                owner.notifyCurrentTime(assetId, currentTime);
+                                currentTimeHandler.postDelayed(this, 100);
+                                return;
+                            }else if(!player.getPlayWhenReady()){
+                                isPaused = true;
+                            }
                         }
                     }
                     Log.d(TAG, "Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
-                    dispatchComplete();
+                    if(isPaused){
+                        Log.v(TAG, "Playback is paused, not dispatching complete");
+                    }else{
+                        Log.v(TAG, "Playback is stopped, dispatching complete");
+                        dispatchComplete();
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting current time", e);
                     stopCurrentTimeUpdates();

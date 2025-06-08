@@ -205,4 +205,8 @@ public class AudioDispatcher
         }
         return playing;
     }
+
+    public boolean isPaused() {
+        return mediaState == PAUSE;
+    }
 }

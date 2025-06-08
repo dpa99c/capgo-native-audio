@@ -294,6 +294,14 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     @Override
+    public float getVolume() throws Exception {
+        if (player != null) {
+            return player.getVolume();
+        }
+        return 0;
+    }
+
+    @Override
     public boolean isPlaying() throws Exception {
         return player != null && player.isPlaying();
     }
@@ -478,17 +486,17 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     @Override
-    public void stopWithFade(double fadeOutDurationMs) throws Exception {
+    public void stopWithFade(double fadeOutDurationMs, boolean asPause) throws Exception {
         owner
             .getActivity()
             .runOnUiThread(() -> {
                 if (player != null && player.isPlaying()) {
-                    fadeOut(fadeOutDurationMs);
+                    fadeOut(fadeOutDurationMs, asPause);
                 }
             });
     }
 
-    private void fadeOut(double fadeOutDurationMs) {
+    private void fadeOut(double fadeOutDurationMs, boolean asPause) {
         cancelFade();
         fadeState = FadeState.FADE_OUT;
 
@@ -520,7 +528,13 @@ public class StreamAudioAsset extends AudioAsset {
                     if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
                         fadeState = FadeState.NONE;
                         try {
-                            stop();
+                            if(asPause){
+                                player.setPlayWhenReady(false);
+                                Log.v(TAG, "Faded out to pause at time " + getCurrentPosition());
+                            } else {
+                                stop();
+                                Log.v(TAG, "Faded out to stop at time " + getCurrentPosition());
+                            }
                         } catch (Exception e) {
                             Log.e(TAG, "Error stopping playback", e);
                         }
@@ -664,16 +678,26 @@ public class StreamAudioAsset extends AudioAsset {
             @Override
             public void run() {
                 try {
-                    if (player != null && player.getPlaybackState() == Player.STATE_READY && player.isPlaying()) {
-                        double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
-                        Log.d(TAG, "Play timer update: currentTime = " + currentTime);
-                        owner.notifyCurrentTime(assetId, currentTime);
-                        currentTimeHandler.postDelayed(this, 100);
-                        return;
+                    boolean isPaused = false;
+                    if (player != null && player.getPlaybackState() == Player.STATE_READY) {
+                        if(player.isPlaying()){
+                            double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
+                            Log.d(TAG, "Play timer update: currentTime = " + currentTime);
+                            owner.notifyCurrentTime(assetId, currentTime);
+                            currentTimeHandler.postDelayed(this, 100);
+                            return;
+                        }else if(!player.getPlayWhenReady()){
+                            isPaused = true;
+                        }
                     }
                     Log.d(TAG, "Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
-                    dispatchComplete();
+                    if(isPaused){
+                        Log.v(TAG, "Playback is paused, not dispatching complete");
+                    }else{
+                        Log.v(TAG, "Playback is stopped, dispatching complete");
+                        dispatchComplete();
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting current time", e);
                     stopCurrentTimeUpdates();
