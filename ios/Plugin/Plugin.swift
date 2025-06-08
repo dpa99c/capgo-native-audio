@@ -32,7 +32,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "setCurrentTime", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearCache", returnType: CAPPluginReturnPromise)
     ]
-    private var logger = nil as OSLog?
+    private var logger = Logger(logTag: identifier)
+
+    // Companion object for static shared state
+    companion object {
+        static let debugModeEnabled = false
+    }
+
     internal let audioQueue = DispatchQueue(label: "ee.forgr.audio.queue", qos: .userInitiated, attributes: .concurrent)
     private var audioList: [String: Any] = [:] {
         didSet {
@@ -50,14 +56,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var pendingFadeOutTasks: [String: DispatchWorkItem] = [:]
 
     override public init() {
-        self.logger = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "NativeAudio", category: self.identifier)
         super.init()
-    }
-
-    func log(_ message: String, level: OSLogType = .default, _ args: CVarArg...) {
-        guard let logger = self.logger else { return }
-        let formatted = String(format: message, arguments: args)
-        os_log("%{public}@", log: logger, type: level, formatted)
     }
 
     @objc override public func load() {
@@ -100,7 +99,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             try self.session.setCategory(AVAudioSession.Category.playback, options: .mixWithOthers)
             // Don't activate/deactivate in setup - we'll do this explicitly when needed
         } catch {
-            log("Failed to setup audio session: %@", level: .error, error.localizedDescription)
+            logger.error("Failed to setup audio session: %@", error.localizedDescription)
         }
     }
 
@@ -137,12 +136,25 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    /***********************************
+     * Plugin Methods
+     **********************************/
+
+    @objc func setDebugMode(_ call: CAPPluginCall) {
+        let debug = call.getBool("enabled") ?? false
+        debugModeEnabled = debug
+        if debug {
+            logger.info("Debug mode enabled")
+        }
+        call.resolve()
+    }
+
     @objc func configure(_ call: CAPPluginCall) {
         let focus = call.getBool(Constant.FocusAudio) ?? false
         let background = call.getBool(Constant.Background) ?? false
         let ignoreSilent = call.getBool(Constant.IgnoreSilent) ?? true
 
-        log("Configuring audio session with focus: %@, background: %@, ignoreSilent: %@", level: .info, "\(focus)", "\(background)", "\(ignoreSilent)")
+        logger.info("Configuring audio session with focus: \(focus), background: \(background), ignoreSilent: \(ignoreSilent)")
         // Use a single audio session configuration block for better atomicity
         do {
             // Set category first
@@ -160,7 +172,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
         } catch {
-            log("Error configuring audio session: %@", level: .error, error.localizedDescription)
+            logger.error("Error configuring audio session: %@", error.localizedDescription)
         }
 
         call.resolve()
@@ -190,7 +202,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 try self.session.setActive(true)
             }
         } catch {
-            log("Failed to set session active: %@", level: .error, error.localizedDescription)
+            logger.error("Failed to set session active: %@", error.localizedDescription)
         }
     }
 
@@ -211,7 +223,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 try self.session.setActive(false, options: .notifyOthersOnDeactivation)
             }
         } catch {
-            log("Failed to deactivate audio session: %@", level: .error, error.localizedDescription)
+            logger.error("Failed to deactivate audio session: %@", error.localizedDescription)
         }
     }
 
@@ -247,7 +259,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         let fadeOutDuration = call.getDouble(Constant.FadeOutDuration) ?? Double(Constant.DefaultFadeDuration)
         let fadeOutStartTime = call.getDouble(Constant.FadeOutStartTime) ?? 0.0
 
-        log("Playing audio with id: %@, time: %f, delay: %f, volume: %f, fadeIn: %@, fadeInDuration: %f, fadeOut: %@, fadeOutDuration: %f, fadeOutStartTime: %f", level: .info, audioId, time, delay, volume ?? 0.0, "\(fadeIn)", fadeInDuration, "\(fadeOut)", fadeOutDuration, fadeOutStartTime)
+        logger.info("Playing audio with id: %@, time: %f, delay: %f, volume: %f, fadeIn: %@, fadeInDuration: %f, fadeOut: %@, fadeOutDuration: %f, fadeOutStartTime: %f",
+                    audioId, time, delay, volume ?? Constant.DefaultVolume,
+                    "\(fadeIn)", fadeInDuration, "\(fadeOut)", fadeOutDuration, fadeOutStartTime)
 
         // Use sync for operations that need to be blocking
         audioQueue.sync {
@@ -322,7 +336,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             cancelPendingPlay(for: audioAsset.assetId)
             cancelPendingFadeOut(for: audioAsset.assetId)
             let time = max(call.getDouble("time") ?? 0, 0) // Ensure non-negative time
-            log("'Setting current time for audio asset: %@, time: %f", level: .info, audioAsset.assetId, time)
+            logger.info("Setting current time for audio asset: %@, time: %f", audioAsset.assetId, time)
             audioAsset.setCurrentTime(time: time)
             call.resolve()
         }
@@ -360,7 +374,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 call.reject("Failed to get audio asset")
                 return
             }
-            log("Resuming audio asset: %@", level: .info, audioAsset.assetId)
+            logger.info("Resuming audio asset: %@", audioAsset.assetId)
             self.activateSession()
             audioAsset.resume()
             call.resolve()
@@ -373,7 +387,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 call.reject("Failed to get audio asset")
                 return
             }
-            log("Pausing audio asset: %@", level: .info, audioAsset.assetId)
+            logger.info("Pausing audio asset: %@", audioAsset.assetId)
             cancelPendingPlay(for: audioAsset.assetId)
             cancelPendingFadeOut(for: audioAsset.assetId)
             audioAsset.pause()
@@ -394,7 +408,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
             do {
-                log("Stopping audio asset with id: %@, fadeOut: %@, fadeOutDuration: %f", level: .info, audioId, "\(fadeOut)", fadeOutDuration)
+                logger.info("Stopping audio asset with id: %@, fadeOut: %@, fadeOutDuration: %f", audioId, "\(fadeOut)", fadeOutDuration)
                 try self.stopAudio(audioId: audioId, fadeOut: fadeOut, fadeOutDuration: fadeOutDuration)
                 self.endSession()
                 call.resolve()
@@ -411,7 +425,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 return
             }
 
-            log("Looping audio asset: %@", level: .info, audioAsset.assetId)
+            logger.info("Looping audio asset: %@", audioAsset.assetId)
             cancelPendingPlay(for: audioAsset.assetId)
             cancelPendingFadeOut(for: audioAsset.assetId)
             audioAsset.loop()
@@ -431,7 +445,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             cancelPendingPlay(for: audioId)
             cancelPendingFadeOut(for: audioId)
 
-            log("Unloading audio asset with id: %@", level: .info, audioId)
+            logger.info("Unloading audio asset with id: %@", audioId)
             if let asset = self.audioList[audioId] as? AudioAsset {
                 asset.unload()
                 self.audioList[audioId] = nil
@@ -469,7 +483,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 return
             }
 
-            log("Setting rate for audio asset: %@", level: .info, audioAsset.assetId)
+            logger.info("Setting rate for audio asset: %@", audioAsset.assetId)
             let rate = min(max(call.getFloat(Constant.Rate) ?? Constant.DefaultRate, Constant.MinRate), Constant.MaxRate)
             audioAsset.setRate(rate: rate as NSNumber)
             call.resolve()
@@ -523,7 +537,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             isLocalUrl = false
         }
 
-        log("Preloading audio asset with id: %@, path: %@, channels: %d, volume: %f", level: .info, audioId, assetPath, channels ?? Constant.DefaultChannels, volume ?? Constant.DefaultVolume)
+        logger.info("Preloading audio asset with id: %@, path: %@, channels: %d, volume: %f", audioId, assetPath, channels ?? Constant.DefaultChannels, volume ?? Constant.DefaultVolume)
 
         audioQueue.sync(flags: .barrier) { [self] in
             if audioList.isEmpty {
@@ -658,7 +672,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
         let duration = asset.getDuration()
         if duration <= 0 || !duration.isFinite {
-            log("Audio asset has no duration or is not finite, skipping fade out for asset: %@", level: .info, audioId)
+            logger.warning("Audio asset has no duration or is not finite, skipping fade out for asset: %@", audioId)
             return
         }
 
@@ -667,7 +681,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             startTime = fadeOutStartTime
         }
 
-        log("Scheduling fade out for audio asset: %@, startTime: %fs, fadeOutDuration: %fs", level: .info, audioId, startTime, fadeOutDuration)
+        logger.debug("Scheduling fade out for audio asset: %@, startTime: %fs, fadeOutDuration: %fs", audioId, startTime, fadeOutDuration)
 
         let workItem = DispatchWorkItem { [weak self] in
             asset.stopWithFade(fadeOutDuration: fadeOutDuration)

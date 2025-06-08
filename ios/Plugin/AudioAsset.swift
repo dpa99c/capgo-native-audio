@@ -23,7 +23,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     let maxVolume: Float = 1.0
     weak var owner: NativeAudio?
     private var identifier: String = "AudioAsset"
-    var logger = nil as OSLog?
+    private var logger = Logger(logTag: identifier)
 
     // Constants for fade effect
     let fadeDelaySecs: Float = 0.08
@@ -51,12 +51,11 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         self.assetId = assetId
         self.channels = []
         self.initialVolume = min(max(volume ?? Constant.DefaultVolume, Constant.MinVolume), Constant.MaxVolume) // Validate volume range
-        self.logger = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "NativeAudio", category: self.identifier)
 
         super.init()
 
         guard let encodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            log("Failed to encode path: %@", level: .error, String(describing: path))
+            logger.error("Failed to encode path: %@", String(describing: path))
             return
         }
 
@@ -83,7 +82,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                     player.prepareToPlay()
                     self.channels.append(player)
                 } catch {
-                    log("Error loading audio file: %@ - path: %@", level: .error, error.localizedDescription, String(describing: path))
+                    logger.error("Error loading audio file: %@ - path: %@", error.localizedDescription, String(describing: path))
                 }
             }
         }
@@ -105,12 +104,6 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             }
         }
         channels = []
-    }
-
-    func log(_ message: String, level: OSLogType = .default, _ args: CVarArg...) {
-        guard let logger = self.logger else { return }
-        let formatted = String(format: message, arguments: args)
-        os_log("%{public}@", log: logger, type: level, formatted)
     }
 
     /**
@@ -244,7 +237,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         let fadeStep = targetVolume / Float(steps)
         var currentVolume: Float = 0
 
-        log("Beginning fade in at time %2f over @%2f seconds to target volume %2f in %d steps (step duration: %2fs)", level: .debug, getCurrentTime(), fadeInDuration, targetVolume, steps, fadeDelaySecs)
+        logger.debug("Beginning fade in at time %2f over @%2f seconds to target volume %2f in %d steps (step duration: %2fs)", getCurrentTime(), fadeInDuration, targetVolume, steps, fadeDelaySecs)
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
             guard !task.isCancelled else { return }
@@ -261,12 +254,12 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                         return
                     }
                     let thisTargetVolume = min(max(currentVolume, 0), targetVolume)
-                    strongerSelf.log("Fade in step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.logger.verbose("Fade in step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     audio.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
             }
-            strongSelf.log("Fade in complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+            strongSelf.logger.debug("Fade in complete at time %2f", strongSelf.getCurrentTime())
         }
         fadeTask = task
         fadeQueue.async(execute: task)
@@ -279,7 +272,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         var currentVolume: Float = audio.volume
         let fadeStep = currentVolume / Float(steps)
 
-        log("Beginning fade out from volume %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
+        logger.debug("Beginning fade out from volume %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", currentVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
             for _ in 0..<steps {
@@ -296,7 +289,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                         return
                     }
                     let thisTargetVolume = max(currentVolume, 0)
-                    strongerSelf.log("Fade out step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.lgger.verbose("Fade out step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     audio.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
@@ -310,7 +303,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                     "assetId": strongSelf.assetId as Any
                 ])
                 strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
-                strongSelf.log("Fade out complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+                strongSelf.logger.debug("Fade out complete at time %2f", strongSelf.getCurrentTime())
             }
         }
         fadeTask = task
@@ -330,7 +323,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         // Calculate the exponential ratio
         let ratio = pow(safeTargetVolume / currentVolume, 1.0 / Float(steps))
 
-        log("Beginning exponential fade from volume %2f to %2f at time %2f over %2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, safeTargetVolume, getCurrentTime(), fadeDuration, steps, fadeDelaySecs)
+        logger.debug("Beginning exponential fade from volume %2f to %2f at time %2f over %2f seconds in %d steps (step duration: %2fs)", currentVolume, safeTargetVolume, getCurrentTime(), fadeDuration, steps, fadeDelaySecs)
 
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
@@ -348,12 +341,12 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                         return
                     }
                     let thisTargetVolume = min(max(currentVolume, minVolume), strongerSelf.maxVolume)
-                    strongerSelf.log("Exponential fade step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.logger.verbose("Exponential fade step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     audio.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
             }
-            strongSelf.log("Exponential fade complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+            strongSelf.logger.debug("Exponential fade complete at time %2f", strongSelf.getCurrentTime())
         }
         fadeTask = task
         fadeQueue.async(execute: task)
@@ -488,10 +481,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             let validVolume = min(max(volume.floatValue, Constant.MinVolume), Constant.MaxVolume)
             for player in channels {
                 if player.isPlaying && fadeDuration > 0 {
-                    self.log("Fade to volume %2f over @%2f seconds", level: .debug, validVolume, fadeDuration)
+                    self.logger.debug("Fade to volume %2f over @%2f seconds", validVolume, fadeDuration)
                     self.fadeTo(audio: player, fadeDuration: fadeDuration, targetVolume: validVolume)
                 } else {
-                    self.log("Set volume to %2f", level: .debug, validVolume)
+                    self.logger.debug("Set volume to %2f", validVolume)
                     player.volume = validVolume
                 }
             }
@@ -534,7 +527,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     func playerDecodeError(player: AVAudioPlayer!, error: NSError!) {
         if let error = error {
-            log("AudioAsset decode error: %@", level: .error, error.localizedDescription)
+            logger.error("AudioAsset decode error: %@", error.localizedDescription)
         }
     }
 
@@ -579,7 +572,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     internal func stopCurrentTimeUpdates() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            log("Stop current time updates", level: .debug)
+            logger.debug("Stop current time updates")
             self.currentTimeTimer?.invalidate()
             self.currentTimeTimer = nil
         }

@@ -13,16 +13,16 @@ public class RemoteAudioAsset: AudioAsset {
     var duration: TimeInterval = 0
     var asset: AVURLAsset?
     private var identifier: String = "RemoteAudioAsset"
+    private var logger = Logger(logTag: identifier)
 
     override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!) {
         super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0)
-        self.logger = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "NativeAudio", category: self.identifier)
 
         owner.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
             guard let url = URL(string: path ?? "") else {
-                log("Invalid URL: %@", level: .error, String(describing: path))
+                logger.error("Invalid URL: %@", String(describing: path))
                 return
             }
 
@@ -287,10 +287,10 @@ public class RemoteAudioAsset: AudioAsset {
             let validVolume = min(max(volume.floatValue, Constant.MinVolume), Constant.MaxVolume)
             for player in players {
                 if isPlaying() && fadeDuration > 0 {
-                    self.log("Fade to volume %2f over @%2f seconds", level: .debug, validVolume, fadeDuration)
+                    self.logger.debug("Fade to volume %2f over @%2f seconds", validVolume, fadeDuration)
                     self.fadeTo(player: player, fadeOutDuration: fadeDuration, targetVolume: validVolume)
                 } else {
-                    self.log("Set volume to %2f", level: .debug, validVolume)
+                    self.logger.debug("Set volume to %2f", validVolume)
                     player.volume = validVolume
                 }
             }
@@ -390,7 +390,7 @@ public class RemoteAudioAsset: AudioAsset {
         let fadeStep = targetVolume / Float(steps)
         var currentVolume: Float = 0
 
-        log("Beginning fade in at time %2f over @%2f seconds to target volume %2f in %d steps (step duration: %2fs)", level: .debug, getCurrentTime(), fadeInDuration, targetVolume, steps, fadeDelaySecs)
+        logger.debug("Beginning fade in at time %2f over @%2f seconds to target volume %2f in %d steps (step duration: %2fs)", getCurrentTime(), fadeInDuration, targetVolume, steps, fadeDelaySecs)
 
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
@@ -407,12 +407,12 @@ public class RemoteAudioAsset: AudioAsset {
                         return
                     }
                     let thisTargetVolume = min(currentVolume, targetVolume)
-                    strongerSelf.log("Fade in step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.logger.verbose("Fade in step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     player.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
             }
-            strongSelf.log("Fade in complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+            strongSelf.logger.debug("Fade in complete at time %2f", strongSelf.getCurrentTime())
         }
         fadeTask = task
         fadeQueue.async(execute: task)
@@ -444,7 +444,7 @@ public class RemoteAudioAsset: AudioAsset {
         let fadeStep = player.volume / Float(steps)
         var currentVolume: Float = player.volume
 
-        log("Beginning fade out from volume %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
+        logger.debug("Beginning fade out from volume %2f at time %2f over @%2f seconds in %d steps (step duration: %2fs)", currentVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
 
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
@@ -458,7 +458,7 @@ public class RemoteAudioAsset: AudioAsset {
                 currentVolume -= fadeStep
                 DispatchQueue.main.async {
                     let thisTargetVolume = max(currentVolume, 0)
-                    strongSelf.log("Fade out step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongSelf.logger.verbose("Fade out step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     player.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
@@ -477,7 +477,7 @@ public class RemoteAudioAsset: AudioAsset {
                 ])
                 strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
 
-                strongSelf.log("Fade out complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+                strongSelf.logger.debug("Fade out complete at time %2f", strongSelf.getCurrentTime())
             }
         }
         fadeTask = task
@@ -503,7 +503,7 @@ public class RemoteAudioAsset: AudioAsset {
         // Calculate the exponential ratio for each step
         let ratio = pow(safeTargetVolume / currentVolume, 1.0 / Float(steps))
 
-        log("Beginning exponential fade from volume %2f to %2f at time %2f over %2f seconds in %d steps (step duration: %2fs)", level: .debug, currentVolume, safeTargetVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
+        logger.debug("Beginning exponential fade from volume %2f to %2f at time %2f over %2f seconds in %d steps (step duration: %2fs)", currentVolume, safeTargetVolume, getCurrentTime(), fadeOutDuration, steps, fadeDelaySecs)
 
         var task: DispatchWorkItem!
         task = DispatchWorkItem { [weak self] in
@@ -520,12 +520,12 @@ public class RemoteAudioAsset: AudioAsset {
                         return
                     }
                     let thisTargetVolume = min(max(currentVolume, minVolume), strongSelf.maxVolume)
-                    strongerSelf.log("Exponential fade step: from %2f to %2f to target %2f", level: .debug, previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.logger.verbose("Exponential fade step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     player.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
             }
-            strongSelf.log("Exponential fade complete at time %2f", level: .debug, strongSelf.getCurrentTime())
+            strongSelf.logger.debug("Exponential fade complete at time %2f", strongSelf.getCurrentTime())
         }
         fadeTask = task
         fadeQueue.async(execute: task)
@@ -543,7 +543,7 @@ public class RemoteAudioAsset: AudioAsset {
                         try FileManager.default.removeItem(at: fileURL)
                     }
                 } catch {
-                    print("Error clearing audio cache: \(error)")
+                    logger.error("Error clearing audio cache: %@", error.localizedDescription)
                 }
             }
         }
