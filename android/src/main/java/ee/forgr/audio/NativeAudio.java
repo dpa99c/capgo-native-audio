@@ -40,14 +40,12 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
-
-import org.json.JSONObject;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import org.json.JSONObject;
 
 @UnstableApi
 @CapacitorPlugin(
@@ -407,7 +405,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (audioAssetList.containsKey(audioId)) {
                 AudioAsset asset = audioAssetList.get(audioId);
                 if (asset != null) {
-                    if( fadeIn ) {
+                    if (fadeIn) {
                         double time = asset.getCurrentPosition();
                         JSObject data = getAudioAssetData(audioId);
                         float volume = data.getLong("volumeBeforePause");
@@ -646,7 +644,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
 
         JSONObject data = getAudioAssetData(assetId);
-        if(data.has("fadeOut")) {
+        if (data.has("fadeOut")) {
             double fadeOutStartTime = data.optDouble("fadeOutStartTime", 0.0);
             double fadeOutDuration = data.optDouble("fadeOutDuration", AudioAsset.DEFAULT_FADE_DURATION_MS);
             if (roundedTime >= fadeOutStartTime) {
@@ -663,7 +661,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 }
             }
         }
-
     }
 
     private void preloadAsset(PluginCall call) {
@@ -839,7 +836,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             logger.error("Error handling fade-out", e);
         }
     }
-
 
     private void clearFadeOutToStopTimer(String audioId) {
         JSObject data = getAudioAssetData(audioId);

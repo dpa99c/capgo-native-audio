@@ -9,7 +9,9 @@ import type {
   AssetSetTime,
   AssetVolume,
   AssetRate,
-  AssetStopOptions, AssetResumeOptions, AssetPauseOptions,
+  AssetStopOptions,
+  AssetResumeOptions,
+  AssetPauseOptions,
 } from './definitions';
 import { NativeAudio } from './definitions';
 
@@ -26,7 +28,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private static readonly MEDIA_ELEMENT_SOURCE_MAP: Map<HTMLMediaElement, MediaElementAudioSourceNode> = new Map();
   private static readonly GAIN_NODE_MAP: Map<HTMLMediaElement, GainNode> = new Map();
 
-  private debugMode: boolean = false;
+  private debugMode = false;
 
   private currentTimeIntervals: Map<string, number> = new Map();
 
@@ -34,10 +36,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   async resume(options: AssetResumeOptions): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
-    if(options?.fadeIn) {
+    if (options?.fadeIn) {
       const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeIn(audio, fadeDuration);
-    }else if(audio.volume <= this.zeroVolume){
+    } else if (audio.volume <= this.zeroVolume) {
       audio.volume = this.getAudioAssetData(options.assetId).volume || 1;
     }
     this.doResume(options.assetId);
@@ -56,7 +58,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
     const data = this.getAudioAssetData(options.assetId);
 
-    if(options?.fadeOut){
+    if (options?.fadeOut) {
       this.cancelGainNodeRamp(audio);
       const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeOut(audio, fadeOutDuration);
@@ -64,8 +66,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         this.doPause(options.assetId);
       }, fadeOutDuration * 1000);
       this.setAudioAssetData(options.assetId, data);
-    }else{
-        this.doPause(options.assetId);
+    } else {
+      this.doPause(options.assetId);
     }
   }
 
@@ -131,8 +133,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         const slashPrefix: string = options.assetPath.startsWith('/') ? '' : '/';
         options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
       }
-      const audio: HTMLAudioElement = document.createElement("audio");
-      audio.crossOrigin = "anonymous";
+      const audio: HTMLAudioElement = document.createElement('audio');
+      audio.crossOrigin = 'anonymous';
       audio.src = options.assetPath;
       audio.autoplay = false;
       audio.loop = false;
@@ -143,7 +145,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       });
       audio.addEventListener('error', (errEvt) => {
         this.logError(`Error loading audio file: ${options.assetPath}, error: ${errEvt}`);
-        reject('Error loading audio file')
+        reject('Error loading audio file');
       });
 
       const data = this.getAudioAssetData(options.assetId);
@@ -301,7 +303,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   private clearFadeOutToStopTimer(assetId: string): void {
     const data = this.getAudioAssetData(assetId);
-    if (data && data.fadeOutToStopTimer) {
+    if (data?.fadeOutToStopTimer) {
       clearTimeout(data.fadeOutToStopTimer);
       data.fadeOutToStopTimer = 0;
       this.setAudioAssetData(assetId, data);
@@ -527,20 +529,20 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   }
 
   private logError(message: string): void {
-    if(!this.debugMode) return;
+    if (!this.debugMode) return;
     console.error(`${NativeAudioWeb.LOG_TAG} Error: ${message}`);
   }
   private logWarning(message: string): void {
-    if(!this.debugMode) return;
+    if (!this.debugMode) return;
     console.warn(`${NativeAudioWeb.LOG_TAG} Warning: ${message}`);
   }
   private logInfo(message: string): void {
-    if(!this.debugMode) return;
-      console.info(`${NativeAudioWeb.LOG_TAG} Info: ${message}`);
+    if (!this.debugMode) return;
+    console.info(`${NativeAudioWeb.LOG_TAG} Info: ${message}`);
   }
   private logDebug(message: string): void {
-    if(!this.debugMode) return;
-      console.debug(`${NativeAudioWeb.LOG_TAG} Debug: ${message}`);
+    if (!this.debugMode) return;
+    console.debug(`${NativeAudioWeb.LOG_TAG} Debug: ${message}`);
   }
 }
 

@@ -608,15 +608,14 @@ public class RemoteAudioAsset extends AudioAsset {
                             .getActivity()
                             .runOnUiThread(() -> {
                                 if (player != null && player.isPlaying()) {
-                                    if(asPause) {
+                                    if (asPause) {
                                         player.pause();
                                         logger.verbose("Faded out to pause at time " + getCurrentPosition());
-                                    }else{
+                                    } else {
                                         player.setVolume(0);
                                         player.stop();
                                         logger.verbose("Faded out to stop at time " + getCurrentPosition());
                                     }
-
                                 }
                             });
                         cancelFade();
@@ -626,7 +625,9 @@ public class RemoteAudioAsset extends AudioAsset {
                     final float previousCurrentVolume = currentVolume;
                     currentVolume -= fadeStep;
                     final float thisTargetVolume = Math.max(currentVolume, 0);
-                    logger.debug("Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
+                    logger.debug(
+                        "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume
+                    );
                     owner
                         .getActivity()
                         .runOnUiThread(() -> {
@@ -755,22 +756,22 @@ public class RemoteAudioAsset extends AudioAsset {
                     if (!players.isEmpty()) {
                         ExoPlayer player = players.get(playIndex);
                         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
-                            if(player.isPlaying()){
+                            if (player.isPlaying()) {
                                 double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
                                 logger.debug("Play timer update: currentTime = " + currentTime);
                                 owner.notifyCurrentTime(assetId, currentTime);
                                 currentTimeHandler.postDelayed(this, 100);
                                 return;
-                            }else if(!player.getPlayWhenReady()){
+                            } else if (!player.getPlayWhenReady()) {
                                 isPaused = true;
                             }
                         }
                     }
                     logger.debug("Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
-                    if(isPaused){
+                    if (isPaused) {
                         logger.verbose("Playback is paused, not dispatching complete");
-                    }else{
+                    } else {
                         logger.verbose("Playback is stopped, dispatching complete");
                         dispatchComplete();
                     }

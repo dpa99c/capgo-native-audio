@@ -1,11 +1,11 @@
 package ee.forgr.audio;
 
 import android.util.Log;
-
 import androidx.media3.common.util.UnstableApi;
 
 @UnstableApi
 public class Logger {
+
     private String logTag;
 
     // constructor

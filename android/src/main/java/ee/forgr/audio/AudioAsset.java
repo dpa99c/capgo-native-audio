@@ -317,13 +317,12 @@ public class AudioAsset {
                     } else {
                         logger.debug("Audio is not not playing");
                         stopCurrentTimeUpdates();
-                        if(audio.isPaused()){
+                        if (audio.isPaused()) {
                             logger.verbose("Audio is paused");
-                        }else{
+                        } else {
                             logger.verbose("Audio is not paused - dispatching complete");
                             dispatchComplete();
                         }
-
                     }
                 } catch (Exception e) {
                     logger.error("Error getting current time", e);
@@ -450,7 +449,7 @@ public class AudioAsset {
                     try {
                         if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
                             fadeState = FadeState.NONE;
-                            if(toPause){
+                            if (toPause) {
                                 logger.verbose("Faded out to pause audio at time " + getCurrentPosition());
                                 audio.pause();
                             } else {

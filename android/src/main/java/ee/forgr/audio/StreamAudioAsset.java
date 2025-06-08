@@ -529,7 +529,7 @@ public class StreamAudioAsset extends AudioAsset {
                     if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
                         fadeState = FadeState.NONE;
                         try {
-                            if(asPause){
+                            if (asPause) {
                                 player.setPlayWhenReady(false);
                                 logger.verbose("Faded out to pause at time " + getCurrentPosition());
                             } else {
@@ -546,7 +546,9 @@ public class StreamAudioAsset extends AudioAsset {
                     final float previousCurrentVolume = currentVolume;
                     currentVolume -= fadeStep;
                     final float thisTargetVolume = Math.max(currentVolume, 0);
-                    logger.debug("Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
+                    logger.debug(
+                        "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume
+                    );
                     owner
                         .getActivity()
                         .runOnUiThread(() -> {
@@ -681,21 +683,21 @@ public class StreamAudioAsset extends AudioAsset {
                 try {
                     boolean isPaused = false;
                     if (player != null && player.getPlaybackState() == Player.STATE_READY) {
-                        if(player.isPlaying()){
+                        if (player.isPlaying()) {
                             double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
                             logger.debug("Play timer update: currentTime = " + currentTime);
                             owner.notifyCurrentTime(assetId, currentTime);
                             currentTimeHandler.postDelayed(this, 100);
                             return;
-                        }else if(!player.getPlayWhenReady()){
+                        } else if (!player.getPlayWhenReady()) {
                             isPaused = true;
                         }
                     }
                     logger.debug("Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
-                    if(isPaused){
+                    if (isPaused) {
                         logger.verbose("Playback is paused, not dispatching complete");
-                    }else{
+                    } else {
                         logger.verbose("Playback is stopped, dispatching complete");
                         dispatchComplete();
                     }
