@@ -566,6 +566,23 @@ Clear the audio cache for remote audio files
 --------------------
 
 
+### setDebugMode(...)
+
+```typescript
+setDebugMode(options: { enabled: boolean; }) => Promise<void>
+```
+
+Set the debug mode
+
+| Param         | Type                               | Description                               |
+| ------------- | ---------------------------------- | ----------------------------------------- |
+| **`options`** | <code>{ enabled: boolean; }</code> | - Options to enable or disable debug mode |
+
+**Since:** 6.5.0
+
+--------------------
+
+
 ### Interfaces
 
 

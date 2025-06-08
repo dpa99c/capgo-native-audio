@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 public class RemoteAudioAsset extends AudioAsset {
 
     private static final String TAG = "RemoteAudioAsset";
+    private static final Logger logger = new Logger(TAG);
     private final ArrayList<ExoPlayer> players;
     private final Uri uri;
     private float volume;
@@ -58,7 +59,7 @@ public class RemoteAudioAsset extends AudioAsset {
                                 initializePlayer(player);
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "Error initializing players", e);
+                            logger.error("Error initializing players", e);
                         }
                     }
                 }
@@ -67,7 +68,7 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @UnstableApi
     private void initializePlayer(ExoPlayer player) {
-        Log.d(TAG, "Initializing player");
+        logger.debug("Initializing player");
 
         // Initialize cache if not already done
         if (cache == null) {
@@ -105,14 +106,14 @@ public class RemoteAudioAsset extends AudioAsset {
             new Player.Listener() {
                 @Override
                 public void onPlaybackStateChanged(int playbackState) {
-                    Log.d(TAG, "Player state changed to: " + getStateString(playbackState));
+                    logger.debug("Player state changed to: " + getStateString(playbackState));
                     if (playbackState == Player.STATE_READY) {
                         isPrepared = true;
                         long duration = player.getDuration();
-                        Log.d(TAG, "Duration available on STATE_READY: " + duration + " ms");
+                        logger.debug("Duration available on STATE_READY: " + duration + " ms");
                         if (duration != androidx.media3.common.C.TIME_UNSET) {
                             double durationSec = duration / 1000.0;
-                            Log.d(TAG, "Notifying duration: " + durationSec + " seconds");
+                            logger.debug("Notifying duration: " + durationSec + " seconds");
                             owner.notifyDurationAvailable(assetId, durationSec);
                         }
                     }
@@ -120,17 +121,17 @@ public class RemoteAudioAsset extends AudioAsset {
 
                 @Override
                 public void onIsPlayingChanged(boolean isPlaying) {
-                    Log.d(TAG, "isPlaying changed to: " + isPlaying + ", state: " + getStateString(player.getPlaybackState()));
+                    logger.debug("isPlaying changed to: " + isPlaying + ", state: " + getStateString(player.getPlaybackState()));
                 }
 
                 @Override
                 public void onIsLoadingChanged(boolean isLoading) {
-                    Log.d(TAG, "isLoading changed to: " + isLoading + ", state: " + getStateString(player.getPlaybackState()));
+                    logger.debug("isLoading changed to: " + isLoading + ", state: " + getStateString(player.getPlaybackState()));
                 }
             }
         );
 
-        Log.d(TAG, "Player initialization complete");
+        logger.debug("Player initialization complete");
     }
 
     private String getStateString(int state) {
@@ -172,7 +173,7 @@ public class RemoteAudioAsset extends AudioAsset {
                                                 playInternal(player, time, volume);
                                                 startCurrentTimeUpdates();
                                             } catch (Exception e) {
-                                                Log.e(TAG, "Error playing after prepare", e);
+                                                logger.error("Error playing after prepare", e);
                                             }
                                         } else if (playbackState == Player.STATE_ENDED) {
                                             owner.dispatchComplete(getAssetId());
@@ -186,7 +187,7 @@ public class RemoteAudioAsset extends AudioAsset {
                                 playInternal(player, time, volume);
                                 startCurrentTimeUpdates();
                             } catch (Exception e) {
-                                Log.e(TAG, "Error playing", e);
+                                logger.error("Error playing", e);
                             }
                         }
                     }
@@ -353,7 +354,7 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public double getDuration() {
-        Log.d(TAG, "getDuration called, players empty: " + players.isEmpty() + ", isPrepared: " + isPrepared);
+        logger.debug("getDuration called, players empty: " + players.isEmpty() + ", isPrepared: " + isPrepared);
         if (!players.isEmpty() && isPrepared) {
             final double[] duration = { 0 };
             owner
@@ -364,25 +365,25 @@ public class RemoteAudioAsset extends AudioAsset {
                         public void run() {
                             ExoPlayer player = players.get(playIndex);
                             int state = player.getPlaybackState();
-                            Log.d(TAG, "Player state: " + state + " (READY=" + Player.STATE_READY + ")");
+                            logger.debug("Player state: " + state + " (READY=" + Player.STATE_READY + ")");
                             if (state == Player.STATE_READY) {
                                 long rawDuration = player.getDuration();
-                                Log.d(TAG, "Raw duration: " + rawDuration + ", TIME_UNSET=" + androidx.media3.common.C.TIME_UNSET);
+                                logger.debug("Raw duration: " + rawDuration + ", TIME_UNSET=" + androidx.media3.common.C.TIME_UNSET);
                                 if (rawDuration != androidx.media3.common.C.TIME_UNSET) {
                                     duration[0] = rawDuration / 1000.0;
-                                    Log.d(TAG, "Final duration in seconds: " + duration[0]);
+                                    logger.debug("Final duration in seconds: " + duration[0]);
                                 } else {
-                                    Log.d(TAG, "Duration is TIME_UNSET");
+                                    logger.debug("Duration is TIME_UNSET");
                                 }
                             } else {
-                                Log.d(TAG, "Player not in READY state");
+                                logger.debug("Player not in READY state");
                             }
                         }
                     }
                 );
             return duration[0];
         }
-        Log.d(TAG, "No players or not prepared for duration");
+        logger.debug("No players or not prepared for duration");
         return 0;
     }
 
@@ -399,7 +400,7 @@ public class RemoteAudioAsset extends AudioAsset {
                             ExoPlayer player = players.get(playIndex);
                             if (player.getPlaybackState() == Player.STATE_READY) {
                                 long rawPosition = player.getCurrentPosition();
-                                Log.d(TAG, "Raw position: " + rawPosition);
+                                logger.debug("Raw position: " + rawPosition);
                                 position[0] = rawPosition / 1000.0;
                             }
                         }
@@ -455,7 +456,7 @@ public class RemoteAudioAsset extends AudioAsset {
                 deleteDir(cacheDir);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error clearing audio cache", e);
+            logger.error("Error clearing audio cache", e);
         }
     }
 
@@ -532,7 +533,7 @@ public class RemoteAudioAsset extends AudioAsset {
                     if (fadeState != FadeState.FADE_IN || currentVolume >= targetVolume) {
                         fadeState = FadeState.NONE;
                         cancelFade();
-                        Log.d(TAG, "Fade in complete at time " + getCurrentPosition());
+                        logger.debug("Fade in complete at time " + getCurrentPosition());
                         return;
                     }
                     final float previousCurrentVolume = currentVolume;
@@ -609,23 +610,23 @@ public class RemoteAudioAsset extends AudioAsset {
                                 if (player != null && player.isPlaying()) {
                                     if(asPause) {
                                         player.pause();
-                                        Log.v(TAG, "Faded out to pause at time " + getCurrentPosition());
+                                        logger.verbose("Faded out to pause at time " + getCurrentPosition());
                                     }else{
                                         player.setVolume(0);
                                         player.stop();
-                                        Log.v(TAG, "Faded out to stop at time " + getCurrentPosition());
+                                        logger.verbose("Faded out to stop at time " + getCurrentPosition());
                                     }
 
                                 }
                             });
                         cancelFade();
-                        Log.v(TAG, "Fade out complete at time " + getCurrentPosition());
+                        logger.verbose("Fade out complete at time " + getCurrentPosition());
                         return;
                     }
                     final float previousCurrentVolume = currentVolume;
                     currentVolume -= fadeStep;
                     final float thisTargetVolume = Math.max(currentVolume, 0);
-                    Log.d(TAG, "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
+                    logger.debug("Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
                     owner
                         .getActivity()
                         .runOnUiThread(() -> {
@@ -680,14 +681,14 @@ public class RemoteAudioAsset extends AudioAsset {
                     if (fadeState != FadeState.FADE_TO || player == null || !player.isPlaying() || currentStep >= steps) {
                         fadeState = FadeState.NONE;
                         cancelFade();
-                        Log.d(TAG, "Fade to complete at time " + getCurrentPosition());
+                        logger.debug("Fade to complete at time " + getCurrentPosition());
                         return;
                     }
                     try {
                         currentVolume *= (float) ratio;
                         // Clamp volume between minVolume and maxVolume
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVol);
-                        Log.v(TAG, "Fade to step " + currentStep + ": volume set to " + currentVolume);
+                        logger.verbose("Fade to step " + currentStep + ": volume set to " + currentVolume);
                         owner
                             .getActivity()
                             .runOnUiThread(() -> {
@@ -697,7 +698,7 @@ public class RemoteAudioAsset extends AudioAsset {
                             });
                         currentStep++;
                     } catch (Exception e) {
-                        Log.e(TAG, "Error during fade to", e);
+                        logger.error("Error during fade to", e);
                         cancelFade();
                     }
                 }
@@ -718,7 +719,7 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     protected void startCurrentTimeUpdates() {
-        Log.d(TAG, "Starting timer updates");
+        logger.debug("Starting timer updates");
         if (currentTimeHandler == null) {
             currentTimeHandler = new Handler(Looper.getMainLooper());
         }
@@ -756,7 +757,7 @@ public class RemoteAudioAsset extends AudioAsset {
                         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
                             if(player.isPlaying()){
                                 double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
-                                Log.d(TAG, "Play timer update: currentTime = " + currentTime);
+                                logger.debug("Play timer update: currentTime = " + currentTime);
                                 owner.notifyCurrentTime(assetId, currentTime);
                                 currentTimeHandler.postDelayed(this, 100);
                                 return;
@@ -765,16 +766,16 @@ public class RemoteAudioAsset extends AudioAsset {
                             }
                         }
                     }
-                    Log.d(TAG, "Stopping play timer - not playing or not ready");
+                    logger.debug("Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
                     if(isPaused){
-                        Log.v(TAG, "Playback is paused, not dispatching complete");
+                        logger.verbose("Playback is paused, not dispatching complete");
                     }else{
-                        Log.v(TAG, "Playback is stopped, dispatching complete");
+                        logger.verbose("Playback is stopped, dispatching complete");
                         dispatchComplete();
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error getting current time", e);
+                    logger.error("Error getting current time", e);
                     stopCurrentTimeUpdates();
                 }
             }
