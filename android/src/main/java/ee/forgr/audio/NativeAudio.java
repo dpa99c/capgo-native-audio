@@ -40,6 +40,9 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -63,11 +66,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private AudioManager audioManager;
     private final Map<String, PluginCall> pendingDurationCalls = new HashMap<>();
 
-    private Handler fadeOutHandler = new Handler(Looper.getMainLooper());
-    private Runnable fadeOutRunnable;
-
     private final Map<String, Handler> pendingPlayHandlers = new HashMap<>();
     private final Map<String, Runnable> pendingPlayRunnables = new HashMap<>();
+    private final Map<String, Handler> fadeOutToStopHandlers = new HashMap<>();
+    private final Map<String, Runnable> fadeOutToStopRunnables = new HashMap<>();
+
+    private final Map<String, JSObject> audioData = new HashMap<>();
 
     @Override
     public void load() {
@@ -438,7 +442,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 if (audioAssetList.containsKey(audioId)) {
                     AudioAsset asset = audioAssetList.get(audioId);
                     if (asset != null) {
-                        cancelFadeOut();
+                        clearFadeOutToStopTimer(audioId);
                         asset.unload();
                         audioAssetList.remove(audioId);
                         call.resolve();
@@ -551,9 +555,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     public void setCurrentTime(final PluginCall call) {
         try {
             initSoundPool();
-            cancelFadeOut();
 
             String audioId = call.getString(ASSET_ID);
+            clearFadeOutToStopTimer(audioId);
             double time = call.getDouble("time", 0.0);
 
             cancelPendingPlay(audioId);
@@ -606,6 +610,26 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (hasListeners("currentTime")) {
             notifyListeners("currentTime", ret);
         }
+
+        JSONObject data = getAudioAssetData(assetId);
+        if(data.has("fadeOut")) {
+            double fadeOutStartTime = data.optDouble("fadeOutStartTime", 0.0);
+            double fadeOutDuration = data.optDouble("fadeOutDuration", AudioAsset.DEFAULT_FADE_DURATION_MS);
+            if (roundedTime >= fadeOutStartTime) {
+                try {
+                    AudioAsset asset = audioAssetList.get(assetId);
+                    if (asset == null) {
+                        Log.e(TAG, "Asset not found for fade-out: " + assetId);
+                        return;
+                    }
+                    Log.d(TAG, "Triggering fade-out for asset: " + assetId + " at time: " + roundedTime);
+                    asset.stopWithFade(fadeOutDuration);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during fade-out", e);
+                }
+            }
+        }
+
     }
 
     private void preloadAsset(PluginCall call) {
@@ -736,7 +760,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         asset.loop();
                     } else {
                         if (fadeOut) {
-                            handleFadeOut(asset, fadeOutDurationMs, fadeOutStartTimeMs);
+                            scheduleFadeOut(asset, fadeOutDurationMs, fadeOutStartTimeMs);
                         }
                         if (fadeIn) {
                             asset.playWithFadeIn(time, volume, fadeInDurationMs);
@@ -757,9 +781,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
-    private void handleFadeOut(AudioAsset asset, double fadeOutDurationMs, double fadeOutStartTimeMs) {
+    private void scheduleFadeOut(AudioAsset asset, double fadeOutDurationMs, double fadeOutStartTimeMs) {
         try {
-            cancelFadeOut();
             double duration = asset.getDuration();
             if (duration > 0) {
                 double fadeOutStartTime = duration - (fadeOutDurationMs / 1000.0);
@@ -769,19 +792,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
                 Log.d(TAG, "Scheduling fade-out for asset: " + asset.assetId + ", start time: " + fadeOutStartTime + " seconds");
 
-                // Cancel any existing fade-out task
-                cancelFadeOut();
-
-                fadeOutRunnable = () -> {
-                    try {
-                        asset.stopWithFade(fadeOutDurationMs);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error during fade-out", e);
-                    }
-                };
-
-                // Schedule fade-out to start at the calculated time
-                fadeOutHandler.postDelayed(fadeOutRunnable, (long) (fadeOutStartTime * 1000));
+                // Store fade-out parameters in asset data
+                JSObject data = getAudioAssetData(asset.assetId);
+                data.put("fadeOut", true);
+                data.put("fadeOutStartTime", fadeOutStartTime);
+                data.put("fadeOutDuration", fadeOutDurationMs);
+                setAudioAssetData(asset.assetId, data);
             } else {
                 Log.w(TAG, "Duration not available, skipping fade-out scheduling");
             }
@@ -790,11 +806,15 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
-    private void cancelFadeOut() {
-        if (fadeOutRunnable != null) {
-            Log.d(TAG, "Cancelling fade-out");
-            fadeOutHandler.removeCallbacks(fadeOutRunnable);
-            fadeOutRunnable = null;
+
+    private void clearFadeOutToStopTimer(String audioId) {
+        JSObject data = getAudioAssetData(audioId);
+        if (data.has("fadeOut")) {
+            Log.d(TAG, "Cancelling fade-out for asset: " + audioId);
+            data.remove("fadeOut");
+            data.remove("fadeOutStartTime");
+            data.remove("fadeOutDuration");
+            setAudioAssetData(audioId, data);
         }
     }
 
@@ -822,7 +842,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         Log.d(TAG, "Stopping audio asset: " + audioId);
         AudioAsset asset = audioAssetList.get(audioId);
         if (asset != null) {
-            cancelFadeOut();
+            clearFadeOutToStopTimer(audioId);
             if (fadeOut) {
                 asset.stopWithFade(fadeOutDurationMs);
             } else {
@@ -844,5 +864,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             ret.put("duration", duration);
             savedCall.resolve(ret);
         }
+    }
+
+    private JSObject getAudioAssetData(String audioId) {
+        JSObject data = new JSObject();
+        if (audioData.containsKey(audioId)) {
+            data = audioData.get(audioId);
+        }
+        return data;
+    }
+
+    private void setAudioAssetData(String audioId, JSObject data) {
+        audioData.put(audioId, data);
     }
 }

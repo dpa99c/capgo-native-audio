@@ -530,6 +530,10 @@ public class AudioAsset {
         fadeTask = null;
     }
 
+    public boolean isFading() {
+        return fadeState != FadeState.NONE;
+    }
+
     private void stopAudio(final AudioDispatcher audio) {
         if (audio != null) {
             try {
