@@ -1,3 +1,5 @@
+import os.log
+
 public class Logger {
     private var osLogger = nil as OSLog?
 
@@ -7,8 +9,8 @@ public class Logger {
     }
 
     /**************************
-    * Log methods
-    ***************************/
+     * Log methods
+     ***************************/
     func error(_ message: String, _ args: CVarArg...) {
         osLog(message, level: .error, args)
     }
@@ -25,16 +27,19 @@ public class Logger {
         osLog(message, level: .default, args)
     }
 
-
     /**************************
-    * Internal methods
-    ***************************/
+     * Internal methods
+     ***************************/
 
     func osLog(_ message: String, level: OSLogType = .default, _ args: CVarArg...) {
-        if(!NativeAudio.debugModeEnabled) {
+        if !NativeAudio.debugModeEnabled {
             return
         }
         let formatted = String(format: message, arguments: args)
+        guard let osLogger = osLogger else {
+            print("OSLog is not initialized")
+            return
+        }
         os_log("%{public}@", log: osLogger, type: level, formatted)
     }
 }

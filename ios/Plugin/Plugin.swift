@@ -15,6 +15,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     public let identifier = "NativeAudio"
     public let jsName = "NativeAudio"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setDebugMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "configure", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "preload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isPreloaded", returnType: CAPPluginReturnPromise),
@@ -32,12 +33,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "setCurrentTime", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearCache", returnType: CAPPluginReturnPromise)
     ]
-    private var logger = Logger(logTag: identifier)
+    private var logger = Logger(logTag: "NativeAudio")
 
-    // Companion object for static shared state
-    companion object {
-        static let debugModeEnabled = false
-    }
+    static var debugModeEnabled = false
 
     internal let audioQueue = DispatchQueue(label: "ee.forgr.audio.queue", qos: .userInitiated, attributes: .concurrent)
     private var audioList: [String: Any] = [:] {
@@ -142,7 +140,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func setDebugMode(_ call: CAPPluginCall) {
         let debug = call.getBool("enabled") ?? false
-        debugModeEnabled = debug
+        NativeAudio.debugModeEnabled = debug
         if debug {
             logger.info("Debug mode enabled")
         }

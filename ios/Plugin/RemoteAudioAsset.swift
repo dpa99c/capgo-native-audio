@@ -12,8 +12,8 @@ public class RemoteAudioAsset: AudioAsset {
     var notificationObservers: [NSObjectProtocol] = []
     var duration: TimeInterval = 0
     var asset: AVURLAsset?
-    private var identifier: String = "RemoteAudioAsset"
-    private var logger = Logger(logTag: identifier)
+    private var logger = Logger(logTag: "RemoteAudioAsset")
+    private static let staticLogger = Logger(logTag: "RemoteAudioAsset")
 
     override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!) {
         super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0)
@@ -543,7 +543,7 @@ public class RemoteAudioAsset: AudioAsset {
                         try FileManager.default.removeItem(at: fileURL)
                     }
                 } catch {
-                    logger.error("Error clearing audio cache: %@", error.localizedDescription)
+                    staticLogger.error("Error clearing audio cache: %@", error.localizedDescription)
                 }
             }
         }

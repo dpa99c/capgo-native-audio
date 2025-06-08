@@ -22,8 +22,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     let zeroVolume: Float = 0.001 // Minimum volume to avoid zero for exponential fade
     let maxVolume: Float = 1.0
     weak var owner: NativeAudio?
-    private var identifier: String = "AudioAsset"
-    private var logger = Logger(logTag: identifier)
+    private var logger = Logger(logTag: "AudioAsset")
 
     // Constants for fade effect
     let fadeDelaySecs: Float = 0.08
@@ -289,7 +288,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                         return
                     }
                     let thisTargetVolume = max(currentVolume, 0)
-                    strongerSelf.lgger.verbose("Fade out step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
+                    strongerSelf.logger.verbose("Fade out step: from %2f to %2f to target %2f", previousCurrentVolume, currentVolume, thisTargetVolume)
                     audio.volume = thisTargetVolume
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(strongSelf.fadeDelaySecs))
