@@ -351,25 +351,6 @@ Resume an audio file
 --------------------
 
 
-### isPaused(...)
-
-```typescript
-isPaused(options: Assets) => Promise<{ isPaused: boolean; }>
-```
-
-Indicate if an audio file is paused
-
-| Param         | Type                                      |
-| ------------- | ----------------------------------------- |
-| **`options`** | <code><a href="#assets">Assets</a></code> |
-
-**Returns:** <code>Promise&lt;{ isPaused: boolean; }&gt;</code>
-
-**Since:** 5.0.0
-
---------------------
-
-
 ### loop(...)
 
 ```typescript
