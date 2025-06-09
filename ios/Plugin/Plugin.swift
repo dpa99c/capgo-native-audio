@@ -51,7 +51,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var interruptionObserver: Any?
 
     private var pendingPlayTasks: [String: DispatchWorkItem] = [:]
-    private var pendingFadeOutTasks: [String: DispatchWorkItem] = [:]
+    // Store fade out data for each assetId
+    private var fadeOutData: [String: [String: Any]] = [:]
 
     override public init() {
         super.init()
@@ -276,7 +277,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             if let asset = asset as? AudioAsset {
                 // Cancel any pending play or fade out for this asset
                 cancelPendingPlay(for: audioId)
-                cancelPendingFadeOut(for: audioId)
+                clearFadeOutData(for: audioId)
 
                 self.activateSession()
 
@@ -332,7 +333,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
             cancelPendingPlay(for: audioAsset.assetId)
-            cancelPendingFadeOut(for: audioAsset.assetId)
+            clearFadeOutData(for: audioAsset.assetId)
             let time = max(call.getDouble("time") ?? 0, 0) // Ensure non-negative time
             logger.info("Setting current time for audio asset: %@, time: %f", audioAsset.assetId, time)
             audioAsset.setCurrentTime(time: time)
@@ -387,7 +388,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             logger.info("Pausing audio asset: %@", audioAsset.assetId)
             cancelPendingPlay(for: audioAsset.assetId)
-            cancelPendingFadeOut(for: audioAsset.assetId)
             audioAsset.pause()
             self.endSession()
             call.resolve()
@@ -425,7 +425,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             logger.info("Looping audio asset: %@", audioAsset.assetId)
             cancelPendingPlay(for: audioAsset.assetId)
-            cancelPendingFadeOut(for: audioAsset.assetId)
+            clearFadeOutData(for: audioAsset.assetId)
             audioAsset.loop()
             call.resolve()
         }
@@ -441,7 +441,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
             cancelPendingPlay(for: audioId)
-            cancelPendingFadeOut(for: audioId)
+            clearFadeOutData(for: audioId)
 
             logger.info("Unloading audio asset with id: %@", audioId)
             if let asset = self.audioList[audioId] as? AudioAsset {
@@ -644,6 +644,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             throw MyError.runtimeError(Constant.ErrorAssetNotFound)
         }
 
+        clearFadeOutData(for: audioId)
+        
         if fadeOut {
             audioAsset.stopWithFade(fadeOutDuration: fadeOutDuration)
         } else {
@@ -651,11 +653,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
-    private func cancelPendingFadeOut(for audioId: String) {
-        if let task = pendingFadeOutTasks[audioId] {
-            task.cancel()
-            pendingFadeOutTasks[audioId] = nil
-        }
+    private func clearFadeOutData(for audioId: String) {
+        fadeOutData[audioId] = nil
     }
 
     private func cancelPendingPlay(for audioId: String) {
@@ -666,8 +665,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     }
 
     private func handleFadeOut(for asset: AudioAsset, audioId: String, fadeOutDuration: TimeInterval, fadeOutStartTime: TimeInterval) {
-        cancelPendingFadeOut(for: audioId)
-
+        // Store fade out parameters in fadeOutData, to be checked in notifyCurrentTime
         let duration = asset.getDuration()
         if duration <= 0 || !duration.isFinite {
             logger.warning("Audio asset has no duration or is not finite, skipping fade out for asset: %@", audioId)
@@ -679,14 +677,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             startTime = fadeOutStartTime
         }
 
-        logger.debug("Scheduling fade out for audio asset: %@, startTime: %fs, fadeOutDuration: %fs", audioId, startTime, fadeOutDuration)
-
-        let workItem = DispatchWorkItem { [weak self] in
-            asset.stopWithFade(fadeOutDuration: fadeOutDuration)
-            self?.pendingFadeOutTasks[audioId] = nil
-        }
-        pendingFadeOutTasks[audioId] = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + startTime, execute: workItem)
+        logger.debug("Storing fade out for audio asset: %@, startTime: %fs, fadeOutDuration: %fs", audioId, startTime, fadeOutDuration)
+        fadeOutData[audioId] = [
+            "fadeOut": true,
+            "fadeOutStartTime": startTime,
+            "fadeOutDuration": fadeOutDuration
+        ]
     }
 
     internal func executeOnAudioQueue(_ block: @escaping () -> Void) {
@@ -708,6 +704,18 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 "currentTime": currentTime,
                 "assetId": asset.assetId
             ])
+
+            // Check for fade out trigger
+            if let fadeData = fadeOutData[asset.assetId],
+               let fadeOut = fadeData["fadeOut"] as? Bool, fadeOut,
+               let fadeOutStartTime = fadeData["fadeOutStartTime"] as? Double,
+               let fadeOutDuration = fadeData["fadeOutDuration"] as? Double {
+                if currentTime >= fadeOutStartTime {
+                    logger.debug("Triggering fade out for asset: %@ at time: %f", asset.assetId, currentTime)
+                    asset.stopWithFade(fadeOutDuration: fadeOutDuration)
+                    fadeOutData[asset.assetId] = nil
+                }
+            }
         }
     }
 }
