@@ -20,7 +20,8 @@ public class AudioAsset {
 
     public static final double DEFAULT_FADE_DURATION_MS = 1000.0;
 
-    private final String TAG = "AudioAsset";
+    private static final String TAG = "AudioAsset";
+    private static final Logger logger = new Logger(TAG);
 
     private final ArrayList<AudioDispatcher> audioList;
     protected int playIndex = 0;
@@ -82,7 +83,7 @@ public class AudioAsset {
             audio.setVolume(volume);
             playIndex++;
             playIndex = playIndex % audioList.size();
-            Log.d(TAG, "Starting timer from play"); // Debug log
+            logger.debug("Starting timer from play"); // Debug log
             startCurrentTimeUpdates(); // Make sure this is called
         } else {
             throw new Exception("AudioDispatcher is null");
@@ -142,7 +143,7 @@ public class AudioAsset {
             AudioDispatcher audio = audioList.get(0);
             if (audio != null) {
                 audio.resume();
-                Log.d(TAG, "Starting timer from resume"); // Debug log
+                logger.debug("Starting timer from resume"); // Debug log
                 startCurrentTimeUpdates(); // Make sure this is called
             } else {
                 throw new Exception("AudioDispatcher is null");
@@ -211,6 +212,17 @@ public class AudioAsset {
         }
     }
 
+    public float getVolume() throws Exception {
+        if (audioList.size() != 1) return 0;
+
+        AudioDispatcher audio = audioList.get(playIndex);
+        if (audio != null) {
+            return audio.getVolume();
+        } else {
+            throw new Exception("AudioDispatcher is null");
+        }
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     public void setRate(float rate) throws Exception {
         for (int x = 0; x < audioList.size(); x++) {
@@ -262,7 +274,7 @@ public class AudioAsset {
     }
 
     protected void startCurrentTimeUpdates() {
-        Log.d(TAG, "Starting timer updates");
+        logger.debug("Starting timer updates");
         if (currentTimeHandler == null) {
             currentTimeHandler = new Handler(Looper.getMainLooper());
         }
@@ -289,26 +301,31 @@ public class AudioAsset {
                 try {
                     audio = audioList.get(playIndex);
                 } catch (Exception e) {
-                    Log.v(TAG, "Audio dispatcher does not exist at index " + playIndex);
+                    logger.verbose("Audio dispatcher does not exist at index " + playIndex);
                 }
                 if (audio == null) {
-                    Log.d(TAG, "Audio dispatcher does not exist - aborting timer update");
+                    logger.debug("Audio dispatcher does not exist - aborting timer update");
                     return;
                 }
 
                 try {
                     if (audio != null && audio.isPlaying()) {
                         double currentTime = getCurrentPosition();
-                        Log.v(TAG, "Play timer update: currentTime = " + currentTime);
+                        logger.verbose("Play timer update: currentTime = " + currentTime);
                         owner.notifyCurrentTime(assetId, currentTime);
                         currentTimeHandler.postDelayed(this, 100);
                     } else {
-                        Log.d(TAG, "Stopping play timer - not playing");
+                        logger.debug("Audio is not not playing");
                         stopCurrentTimeUpdates();
-                        dispatchComplete();
+                        if (audio.isPaused()) {
+                            logger.verbose("Audio is paused");
+                        } else {
+                            logger.verbose("Audio is not paused - dispatching complete");
+                            dispatchComplete();
+                        }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error getting current time", e);
+                    logger.error("Error getting current time", e);
                     stopCurrentTimeUpdates();
                 }
             }
@@ -317,7 +334,7 @@ public class AudioAsset {
     }
 
     void stopCurrentTimeUpdates() {
-        Log.d(TAG, "Stopping play timer updates");
+        logger.verbose("Stopping play timer updates");
         if (currentTimeHandler != null && currentTimeRunnable != null) {
             currentTimeHandler.removeCallbacks(currentTimeRunnable);
             currentTimeHandler = null;
@@ -366,7 +383,7 @@ public class AudioAsset {
                     if (fadeState != FadeState.FADE_IN || currentVolume >= targetVolume) {
                         fadeState = FadeState.NONE;
                         cancelFade();
-                        Log.d(TAG, "Fade in complete at time " + getCurrentPosition());
+                        logger.debug("Fade in complete at time " + getCurrentPosition());
                         return;
                     }
                     final float previousCurrentVolume = currentVolume;
@@ -379,7 +396,7 @@ public class AudioAsset {
                         );
                         if (audio != null) audio.setVolume(resolvedTargetVolume);
                     } catch (Exception e) {
-                        Log.e(TAG, "Error during fade in", e);
+                        logger.error("Error during fade in", e);
                         cancelFade();
                     }
                 }
@@ -390,15 +407,15 @@ public class AudioAsset {
         );
     }
 
-    public void stopWithFade(double fadeOutDurationMs) throws Exception {
+    public void stopWithFade(double fadeOutDurationMs, boolean toPause) throws Exception {
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null && audio.isPlaying()) {
             cancelFade();
-            fadeOut(audio, fadeOutDurationMs);
+            fadeOut(audio, fadeOutDurationMs, toPause);
         }
     }
 
-    private void fadeOut(final AudioDispatcher audio, double fadeOutDurationMs) {
+    private void fadeOut(final AudioDispatcher audio, double fadeOutDurationMs, boolean toPause) {
         cancelFade();
         fadeState = FadeState.FADE_OUT;
 
@@ -429,16 +446,23 @@ public class AudioAsset {
 
                 @Override
                 public void run() {
-                    if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
-                        fadeState = FadeState.NONE;
-                        stopAudio(audio);
-                        cancelFade();
-                        Log.d(TAG, "Fade out complete at time " + getCurrentPosition());
-                        return;
-                    }
-                    final float previousCurrentVolume = currentVolume;
-                    currentVolume -= fadeStep;
                     try {
+                        if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
+                            fadeState = FadeState.NONE;
+                            if (toPause) {
+                                logger.verbose("Faded out to pause audio at time " + getCurrentPosition());
+                                audio.pause();
+                            } else {
+                                logger.verbose("Faded out to stop at time " + getCurrentPosition());
+                                stop();
+                            }
+                            cancelFade();
+                            logger.debug("Fade out complete at time " + getCurrentPosition());
+                            return;
+                        }
+                        final float previousCurrentVolume = currentVolume;
+                        currentVolume -= fadeStep;
+
                         final float thisTargetVolume = Math.max(currentVolume, 0);
                         Log.v(
                             TAG,
@@ -446,7 +470,7 @@ public class AudioAsset {
                         );
                         if (audio != null) audio.setVolume(thisTargetVolume);
                     } catch (Exception e) {
-                        Log.e(TAG, "Error during fade out", e);
+                        logger.error("Error during fade out", e);
                         cancelFade();
                     }
                 }
@@ -497,7 +521,7 @@ public class AudioAsset {
                     if ((audio != null && fadeState != FadeState.FADE_TO) || !audio.isPlaying() || currentStep >= steps) {
                         fadeState = FadeState.NONE;
                         cancelFade();
-                        Log.d(TAG, "Fade to complete at time " + getCurrentPosition());
+                        logger.debug("Fade to complete at time " + getCurrentPosition());
                         return;
                     }
 
@@ -505,10 +529,10 @@ public class AudioAsset {
                         currentVolume *= (float) ratio;
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
                         if (audio != null) audio.setVolume(currentVolume);
-                        Log.v(TAG, "Fade to step " + currentStep + ": volume set to " + currentVolume);
+                        logger.verbose("Fade to step " + currentStep + ": volume set to " + currentVolume);
                         currentStep++;
                     } catch (Exception e) {
-                        Log.e(TAG, "Error during fade to", e);
+                        logger.error("Error during fade to", e);
                         cancelFade();
                     }
                 }
@@ -528,17 +552,5 @@ public class AudioAsset {
         }
         fadeState = FadeState.NONE;
         fadeTask = null;
-    }
-
-    private void stopAudio(final AudioDispatcher audio) {
-        if (audio != null) {
-            try {
-                audio.setVolume(0);
-                stop();
-                cancelFade();
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping after fade", e);
-            }
-        }
     }
 }
