@@ -143,12 +143,12 @@
       },
       {
         "name": "pause",
-        "signature": "(options: Assets) => Promise<void>",
+        "signature": "(options: AssetPauseOptions) => Promise<void>",
         "parameters": [
           {
             "name": "options",
             "docs": "",
-            "type": "Assets"
+            "type": "AssetPauseOptions"
           }
         ],
         "returns": "Promise<void>",
@@ -163,7 +163,7 @@
           },
           {
             "name": "link",
-            "text": "Assets}"
+            "text": "AssetPauseOptions}"
           },
           {
             "name": "returns"
@@ -171,18 +171,18 @@
         ],
         "docs": "Pause an audio file",
         "complexTypes": [
-          "Assets"
+          "AssetPauseOptions"
         ],
         "slug": "pause"
       },
       {
         "name": "resume",
-        "signature": "(options: Assets) => Promise<void>",
+        "signature": "(options: AssetResumeOptions) => Promise<void>",
         "parameters": [
           {
             "name": "options",
             "docs": "",
-            "type": "Assets"
+            "type": "AssetResumeOptions"
           }
         ],
         "returns": "Promise<void>",
@@ -197,7 +197,7 @@
           },
           {
             "name": "link",
-            "text": "Assets}"
+            "text": "AssetResumeOptions}"
           },
           {
             "name": "returns"
@@ -205,7 +205,7 @@
         ],
         "docs": "Resume an audio file",
         "complexTypes": [
-          "Assets"
+          "AssetResumeOptions"
         ],
         "slug": "resume"
       },
@@ -534,7 +534,7 @@
         "tags": [
           {
             "name": "since",
-            "text": "5.0.0\r\nreturn {@link CompletedEvent}"
+            "text": "5.0.0\nreturn {@link CompletedEvent}"
           }
         ],
         "docs": "Listen for complete event",
@@ -563,10 +563,10 @@
         "tags": [
           {
             "name": "since",
-            "text": "6.5.0\r\nreturn {@link CurrentTimeEvent}"
+            "text": "6.5.0\nreturn {@link CurrentTimeEvent}"
           }
         ],
-        "docs": "Listen for current time updates\r\nEmits every 100ms while audio is playing",
+        "docs": "Listen for current time updates\nEmits every 100ms while audio is playing",
         "complexTypes": [
           "PluginListenerHandle",
           "CurrentTimeListener"
@@ -590,6 +590,38 @@
         "docs": "Clear the audio cache for remote audio files",
         "complexTypes": [],
         "slug": "clearcache"
+      },
+      {
+        "name": "setDebugMode",
+        "signature": "(options: { enabled: boolean; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "- Options to enable or disable debug mode",
+            "type": "{ enabled: boolean; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [
+          {
+            "name": "since",
+            "text": "6.5.0"
+          },
+          {
+            "name": "param",
+            "text": "options - Options to enable or disable debug mode"
+          },
+          {
+            "name": "param",
+            "text": "options.enabled - Whether to enable or disable debug mode"
+          },
+          {
+            "name": "returns"
+          }
+        ],
+        "docs": "Set the debug mode",
+        "complexTypes": [],
+        "slug": "setdebugmode"
       }
     ],
     "properties": []
@@ -635,7 +667,7 @@
         {
           "name": "assetPath",
           "tags": [],
-          "docs": "Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://)\r\nSupported formats:\r\n- MP3, WAV (all platforms)\r\n- M3U8/HLS streams (iOS and Android)",
+          "docs": "Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://)\nSupported formats:\n- MP3, WAV (all platforms)\n- M3U8/HLS streams (iOS and Android)",
           "complexTypes": [],
           "type": "string"
         },
@@ -663,7 +695,7 @@
         {
           "name": "isUrl",
           "tags": [],
-          "docs": "Is the audio file a URL, pass true if assetPath is a `file://` url\r\nor a streaming URL (m3u8)",
+          "docs": "Is the audio file a URL, pass true if assetPath is a `file://` url\nor a streaming URL (m3u8)",
           "complexTypes": [],
           "type": "boolean | undefined"
         }
@@ -721,21 +753,81 @@
         {
           "name": "fadeInDuration",
           "tags": [],
-          "docs": "Fade in duration in seconds.\r\nOnly used if fadeIn is true.\r\nDefault is 1s.",
+          "docs": "Fade in duration in seconds.\nOnly used if fadeIn is true.\nDefault is 1s.",
           "complexTypes": [],
           "type": "number | undefined"
         },
         {
           "name": "fadeOutDuration",
           "tags": [],
-          "docs": "Fade out duration in seconds.\r\nOnly used if fadeOut is true.\r\nDefault is 1s.",
+          "docs": "Fade out duration in seconds.\nOnly used if fadeOut is true.\nDefault is 1s.",
           "complexTypes": [],
           "type": "number | undefined"
         },
         {
           "name": "fadeOutStartTime",
           "tags": [],
-          "docs": "Time in seconds from the start of the audio to start fading out.\r\nOnly used if fadeOut is true.\r\nDefault is fadeOutDuration before end of audio.",
+          "docs": "Time in seconds from the start of the audio to start fading out.\nOnly used if fadeOut is true.\nDefault is fadeOutDuration before end of audio.",
+          "complexTypes": [],
+          "type": "number | undefined"
+        }
+      ]
+    },
+    {
+      "name": "AssetPauseOptions",
+      "slug": "assetpauseoptions",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "assetId",
+          "tags": [],
+          "docs": "Asset Id, unique identifier of the file",
+          "complexTypes": [],
+          "type": "string"
+        },
+        {
+          "name": "fadeOut",
+          "tags": [],
+          "docs": "Whether to fade out the audio before pausing",
+          "complexTypes": [],
+          "type": "boolean | undefined"
+        },
+        {
+          "name": "fadeOutDuration",
+          "tags": [],
+          "docs": "Fade out duration in seconds.\nDefault is 1s.",
+          "complexTypes": [],
+          "type": "number | undefined"
+        }
+      ]
+    },
+    {
+      "name": "AssetResumeOptions",
+      "slug": "assetresumeoptions",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "assetId",
+          "tags": [],
+          "docs": "Asset Id, unique identifier of the file",
+          "complexTypes": [],
+          "type": "string"
+        },
+        {
+          "name": "fadeIn",
+          "tags": [],
+          "docs": "Whether to fade in the audio during resume",
+          "complexTypes": [],
+          "type": "boolean | undefined"
+        },
+        {
+          "name": "fadeInDuration",
+          "tags": [],
+          "docs": "Fade in duration in seconds.\nDefault is 1s.",
           "complexTypes": [],
           "type": "number | undefined"
         }
@@ -781,7 +873,7 @@
         {
           "name": "fadeOutDuration",
           "tags": [],
-          "docs": "Fade out duration in seconds.\r\nDefault is 1s.",
+          "docs": "Fade out duration in seconds.\nDefault is 1s.",
           "complexTypes": [],
           "type": "number | undefined"
         }

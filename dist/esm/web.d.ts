@@ -1,22 +1,24 @@
 import { WebPlugin } from '@capacitor/core';
-import type { ConfigureOptions, PreloadOptions, AssetPlayOptions, Assets, AssetSetTime, AssetVolume, AssetRate, AssetStopOptions } from './definitions';
+import type { ConfigureOptions, PreloadOptions, AssetPlayOptions, Assets, AssetSetTime, AssetVolume, AssetRate, AssetStopOptions, AssetResumeOptions, AssetPauseOptions } from './definitions';
 import { NativeAudio } from './definitions';
 export declare class NativeAudioWeb extends WebPlugin implements NativeAudio {
+    private static readonly LOG_TAG;
     private static readonly FILE_LOCATION;
     private static readonly DEFAULT_FADE_DURATION_SEC;
     private static readonly CURRENT_TIME_UPDATE_INTERVAL;
     private static readonly AUDIO_PRELOAD_OPTIONS_MAP;
+    private static readonly AUDIO_DATA_MAP;
     private static readonly AUDIO_ASSET_BY_ASSET_ID;
     private static readonly AUDIO_CONTEXT_MAP;
     private static readonly MEDIA_ELEMENT_SOURCE_MAP;
     private static readonly GAIN_NODE_MAP;
-    private static readonly INITIAL_VOLUME_MAP;
+    private debugMode;
     private currentTimeIntervals;
-    private fadeOutTimer;
-    private startTimer;
     private zeroVolume;
-    resume(options: Assets): Promise<void>;
-    pause(options: Assets): Promise<void>;
+    resume(options: AssetResumeOptions): Promise<void>;
+    doResume(assetId: string): Promise<void>;
+    pause(options: AssetPauseOptions): Promise<void>;
+    doPause(assetId: string): Promise<void>;
     setCurrentTime(options: AssetSetTime): Promise<void>;
     getCurrentTime(options: Assets): Promise<{
         currentTime: number;
@@ -24,6 +26,9 @@ export declare class NativeAudioWeb extends WebPlugin implements NativeAudio {
     getDuration(options: Assets): Promise<{
         duration: number;
     }>;
+    setDebugMode(options: {
+        enabled: boolean;
+    }): Promise<void>;
     configure(options: ConfigureOptions): Promise<void>;
     isPreloaded(options: PreloadOptions): Promise<{
         found: boolean;
@@ -32,11 +37,13 @@ export declare class NativeAudioWeb extends WebPlugin implements NativeAudio {
     private onEnded;
     play(options: AssetPlayOptions): Promise<void>;
     private doPlay;
+    private doFadeIn;
+    private doFadeOut;
     loop(options: Assets): Promise<void>;
     stop(options: AssetStopOptions): Promise<void>;
     private doStop;
     private reset;
-    private clearFadeOutTimer;
+    private clearFadeOutToStopTimer;
     private clearStartTimer;
     unload(options: Assets): Promise<void>;
     private cleanupAudioContext;
@@ -57,6 +64,12 @@ export declare class NativeAudioWeb extends WebPlugin implements NativeAudio {
     private cancelGainNodeRamp;
     private startCurrentTimeUpdates;
     private stopCurrentTimeUpdates;
+    private getAudioAssetData;
+    private setAudioAssetData;
+    private logError;
+    private logWarning;
+    private logInfo;
+    private logDebug;
 }
 declare const NativeAudio: NativeAudioWeb;
 export { NativeAudio };
