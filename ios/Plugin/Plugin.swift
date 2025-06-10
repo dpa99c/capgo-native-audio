@@ -377,7 +377,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             self.activateSession()
             let fadeIn = call.getBool(Constant.FadeIn) ?? false
             let fadeInDuration = call.getDouble(Constant.FadeInDuration) ?? Double(Constant.DefaultFadeDuration)
-            var restoredVolume: Float? = nil
+            var restoredVolume: Float?
             if let data = audioAssetData[audioAsset.assetId], let volume = data["volumeBeforePause"] as? Float {
                 restoredVolume = volume
             }
@@ -675,7 +675,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         clearAudioAssetData(for: audioId)
-        
+
         if fadeOut {
             audioAsset.stopWithFade(fadeOutDuration: fadeOutDuration)
         } else {
