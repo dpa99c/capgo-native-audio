@@ -418,26 +418,30 @@ public class RemoteAudioAsset: AudioAsset {
         fadeQueue.async(execute: task)
     }
 
-    override func stopWithFade(fadeOutDuration: TimeInterval) {
+    override func stopWithFade(fadeOutDuration: TimeInterval, toPause: Bool = false) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
             guard !players.isEmpty && playIndex < players.count else {
-                stop()
+                if !toPause {
+                    stop()
+                }
                 return
             }
 
             let player = players[playIndex]
 
             if player.timeControlStatus == .playing {
-                self.fadeOut(player: player, fadeOutDuration: fadeOutDuration)
+                self.fadeOut(player: player, fadeOutDuration: fadeOutDuration, toPause: toPause)
             } else {
-                stop()
+                if !toPause {
+                    stop()
+                }
             }
         }
     }
 
-    func fadeOut(player: AVPlayer, fadeOutDuration: TimeInterval) {
+    func fadeOut(player: AVPlayer, fadeOutDuration: TimeInterval, toPause: Bool = false) {
         cancelFade()
         let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
         guard steps > 0 else { return }
@@ -468,15 +472,19 @@ public class RemoteAudioAsset: AudioAsset {
                     task.cancel()
                     return
                 }
-                player.pause()
-                if strongSelf.assetId == "" {
-                    return
+                if toPause {
+                    player.pause()
+                } else {
+                    player.pause()
+                    player.seek(to: .zero)
+                    if strongSelf.assetId == "" {
+                        return
+                    }
+                    strongSelf.owner?.notifyListeners("complete", data: [
+                        "assetId": strongSelf.assetId as Any
+                    ])
+                    strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
                 }
-                strongSelf.owner?.notifyListeners("complete", data: [
-                    "assetId": strongSelf.assetId as Any
-                ])
-                strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
-
                 strongSelf.logger.debug("Fade out complete at time %2f", strongSelf.getCurrentTime())
             }
         }

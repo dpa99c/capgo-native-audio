@@ -264,7 +264,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         fadeQueue.async(execute: task)
     }
 
-    func fadeOut(audio: AVAudioPlayer, fadeOutDuration: TimeInterval) {
+    func fadeOut(audio: AVAudioPlayer, fadeOutDuration: TimeInterval, toPause: Bool = false) {
         cancelFade() // Cancel any ongoing fade
         let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
         guard steps > 0 else { return }
@@ -297,11 +297,15 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                 guard let strongSelf = self, strongSelf.isPlaying(), audio.isPlaying else {
                     return
                 }
-                audio.stop()
-                strongSelf.owner?.notifyListeners("complete", data: [
-                    "assetId": strongSelf.assetId as Any
-                ])
-                strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
+                if toPause {
+                    audio.pause()
+                } else {
+                    audio.stop()
+                    strongSelf.owner?.notifyListeners("complete", data: [
+                        "assetId": strongSelf.assetId as Any
+                    ])
+                    strongSelf.dispatchedCompleteMap[strongSelf.assetId] = true
+                }
                 strongSelf.logger.debug("Fade out complete at time %2f", strongSelf.getCurrentTime())
             }
         }
@@ -420,20 +424,24 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    func stopWithFade(fadeOutDuration: TimeInterval) {
+    func stopWithFade(fadeOutDuration: TimeInterval, toPause: Bool = false) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
 
             guard !channels.isEmpty && playIndex < channels.count else {
-                stop()
+                if !toPause {
+                    stop()
+                }
                 return
             }
 
             let player = channels[playIndex]
             if player.isPlaying && player.volume > 0 {
-                self.fadeOut(audio: player, fadeOutDuration: fadeOutDuration)
+                self.fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: toPause)
             } else {
-                stop()
+                if !toPause {
+                    stop()
+                }
             }
         }
     }
