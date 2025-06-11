@@ -36,11 +36,13 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   async resume(options: AssetResumeOptions): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
+    const data = this.getAudioAssetData(options.assetId);
+    const targetVolume = data.volumeBeforePause || data.volume || 1;
     if (options?.fadeIn) {
       const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
-      this.doFadeIn(audio, fadeDuration);
+      this.doFadeIn(audio, fadeDuration, targetVolume);
     } else if (audio.volume <= this.zeroVolume) {
-      audio.volume = this.getAudioAssetData(options.assetId).volume || 1;
+      audio.volume = targetVolume;
     }
     this.doResume(options.assetId);
   }
@@ -57,6 +59,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
     const data = this.getAudioAssetData(options.assetId);
+    data.volumeBeforePause = audio.volume;
+    this.setAudioAssetData(options.assetId, data);
 
     if (options?.fadeOut) {
       this.cancelGainNodeRamp(audio);
@@ -234,11 +238,11 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.setAudioAssetData(assetId, data);
   }
 
-  private doFadeIn(audio: HTMLAudioElement, fadeDuration: number): void {
+  private doFadeIn(audio: HTMLAudioElement, fadeDuration: number, targetVolume?: number): void {
     const data = this.getAudioAssetData(audio.id);
     this.setGainNodeVolume(audio, 0);
-    const initialVolume = data.volume ?? 1;
-    this.linearRampGainNodeVolume(audio, initialVolume, fadeDuration);
+    const fadeToVolume = targetVolume ?? 1;
+    this.linearRampGainNodeVolume(audio, fadeToVolume, fadeDuration);
     data.fadeInTimer = setTimeout(() => {
       data.fadeInTimer = 0;
       this.setAudioAssetData(audio.id, data);
@@ -355,6 +359,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
 
     const { volume, duration = 0 } = options;
+
+    const data = this.getAudioAssetData(options.assetId);
+    data.volume = volume;
+    this.setAudioAssetData(options.assetId, data);
 
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
