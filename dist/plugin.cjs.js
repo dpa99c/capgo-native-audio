@@ -21,12 +21,14 @@ class NativeAudioWeb extends core.WebPlugin {
     }
     async resume(options) {
         const audio = this.getAudioAsset(options.assetId).audio;
+        const data = this.getAudioAssetData(options.assetId);
+        const targetVolume = data.volumeBeforePause || data.volume || 1;
         if (options === null || options === void 0 ? void 0 : options.fadeIn) {
             const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
-            this.doFadeIn(audio, fadeDuration);
+            this.doFadeIn(audio, fadeDuration, targetVolume);
         }
         else if (audio.volume <= this.zeroVolume) {
-            audio.volume = this.getAudioAssetData(options.assetId).volume || 1;
+            audio.volume = targetVolume;
         }
         this.doResume(options.assetId);
     }
@@ -41,6 +43,8 @@ class NativeAudioWeb extends core.WebPlugin {
         const audio = this.getAudioAsset(options.assetId).audio;
         this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
         const data = this.getAudioAssetData(options.assetId);
+        data.volumeBeforePause = audio.volume;
+        this.setAudioAssetData(options.assetId, data);
         if (options === null || options === void 0 ? void 0 : options.fadeOut) {
             this.cancelGainNodeRamp(audio);
             const fadeOutDuration = options.fadeOutDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
@@ -199,12 +203,11 @@ class NativeAudioWeb extends core.WebPlugin {
         }
         this.setAudioAssetData(assetId, data);
     }
-    doFadeIn(audio, fadeDuration) {
-        var _a;
+    doFadeIn(audio, fadeDuration, targetVolume) {
         const data = this.getAudioAssetData(audio.id);
         this.setGainNodeVolume(audio, 0);
-        const initialVolume = (_a = data.volume) !== null && _a !== void 0 ? _a : 1;
-        this.linearRampGainNodeVolume(audio, initialVolume, fadeDuration);
+        const fadeToVolume = targetVolume !== null && targetVolume !== void 0 ? targetVolume : 1;
+        this.linearRampGainNodeVolume(audio, fadeToVolume, fadeDuration);
         data.fadeInTimer = setTimeout(() => {
             data.fadeInTimer = 0;
             this.setAudioAssetData(audio.id, data);
@@ -310,6 +313,9 @@ class NativeAudioWeb extends core.WebPlugin {
             throw 'no volume provided';
         }
         const { volume, duration = 0 } = options;
+        const data = this.getAudioAssetData(options.assetId);
+        data.volume = volume;
+        this.setAudioAssetData(options.assetId, data);
         const audio = this.getAudioAsset(options.assetId).audio;
         this.cancelGainNodeRamp(audio); // cancel any existing scheduled volume changes
         if (duration > 0) {
