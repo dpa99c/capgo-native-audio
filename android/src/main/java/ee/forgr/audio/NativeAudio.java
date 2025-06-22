@@ -470,6 +470,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (isStringValid(call.getString(ASSET_ID))) {
                 String audioId = call.getString(ASSET_ID);
                 cancelPendingPlay(audioId);
+
+                // cleanup for memory leak prevention
+                pendingPlayHandlers.remove(audioId);
+                pendingPlayRunnables.remove(audioId);
+                audioData.remove(audioId);
+                
                 if (audioAssetList.containsKey(audioId)) {
                     AudioAsset asset = audioAssetList.get(audioId);
                     if (asset != null) {
@@ -487,6 +493,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 call.reject(ERROR_AUDIO_ID_MISSING);
             }
         } catch (Exception ex) {
+            // Cleanup on error
+            String audioId = call.getString(ASSET_ID);
+            if (audioId != null) {
+                pendingPlayHandlers.remove(audioId);
+                pendingPlayRunnables.remove(audioId);
+                audioData.remove(audioId);
+            }
             call.reject(ex.getMessage());
         }
     }
