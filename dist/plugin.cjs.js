@@ -20,9 +20,10 @@ class NativeAudioWeb extends core.WebPlugin {
         this.zeroVolume = 0.0001; // Avoids the gain node being set to 0 for exponential ramping
     }
     async resume(options) {
+        var _a, _b;
         const audio = this.getAudioAsset(options.assetId).audio;
         const data = this.getAudioAssetData(options.assetId);
-        const targetVolume = data.volumeBeforePause || data.volume || 1;
+        const targetVolume = (_b = (_a = data.volumeBeforePause) !== null && _a !== void 0 ? _a : data.volume) !== null && _b !== void 0 ? _b : 1;
         if (options === null || options === void 0 ? void 0 : options.fadeIn) {
             const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
             this.doFadeIn(audio, fadeDuration, targetVolume);
@@ -116,6 +117,7 @@ class NativeAudioWeb extends core.WebPlugin {
                 options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
             }
             const audio = document.createElement('audio');
+            audio.id = options.assetId; // Assign assetId to audio.id
             audio.crossOrigin = 'anonymous';
             audio.src = options.assetPath;
             audio.autoplay = false;
@@ -172,6 +174,7 @@ class NativeAudioWeb extends core.WebPlugin {
         // preload the asset again to create a new HTMLAudioElement
         await this.preload(preloadOptions);
         const audio = this.getAudioAsset(assetId).audio;
+        audio.id = assetId; // Ensure audio.id is set to assetId
         audio.loop = false;
         audio.currentTime = time;
         audio.addEventListener('ended', () => this.onEnded(assetId), {
@@ -386,7 +389,7 @@ class NativeAudioWeb extends core.WebPlugin {
         const audioContext = this.getOrCreateAudioContext(audio);
         const track = this.getOrCreateMediaElementSource(audioContext, audio);
         const gainNode = this.getOrCreateGainNode(audio, track);
-        if (time) {
+        if (time !== undefined) {
             gainNode.gain.setValueAtTime(volume, time);
         }
         else {
@@ -429,6 +432,8 @@ class NativeAudioWeb extends core.WebPlugin {
                     this.cancelGainNodeRamp(audio);
                     this.setAudioAssetData(assetId, data);
                     this.doFadeOut(audio, data.fadeOutDuration);
+                    data.fadeOut = false; // prevent re-entry
+                    this.setAudioAssetData(assetId, data);
                 }
             }
             else {
