@@ -475,7 +475,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 pendingPlayHandlers.remove(audioId);
                 pendingPlayRunnables.remove(audioId);
                 audioData.remove(audioId);
-                
+
                 if (audioAssetList.containsKey(audioId)) {
                     AudioAsset asset = audioAssetList.get(audioId);
                     if (asset != null) {

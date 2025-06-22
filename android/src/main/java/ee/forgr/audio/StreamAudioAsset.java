@@ -618,7 +618,9 @@ public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
             steps +
             " steps (step duration: " +
             (FADE_DELAY_MS / 1000.0) +
-            "s, ratio: " + ratio + ")"
+            "s, ratio: " +
+            ratio +
+            ")"
         );
 
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
