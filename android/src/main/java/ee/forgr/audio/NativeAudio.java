@@ -662,13 +662,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             double fadeOutDuration = data.optDouble("fadeOutDuration", AudioAsset.DEFAULT_FADE_DURATION_MS);
             if (roundedTime >= fadeOutStartTime) {
                 try {
-                    AudioAsset asset = audioAssetList.get(assetId);
-                    if (asset == null) {
-                        logger.error("Asset not found for fade-out: " + assetId);
-                        return;
+                    // Synchronize on audioAssetList to prevent race conditions
+                    synchronized (audioAssetList) {
+                        AudioAsset asset = audioAssetList.get(assetId);
+                        if (asset == null) {
+                            logger.error("Asset not found for fade-out: " + assetId);
+                            return;
+                        }
+                        // Synchronize on the asset instance as well
+                        synchronized (asset) {
+                            logger.debug("Triggering fade-out for asset: " + assetId + " at time: " + roundedTime);
+                            asset.stopWithFade(fadeOutDuration, false);
+                        }
                     }
-                    logger.debug("Triggering fade-out for asset: " + assetId + " at time: " + roundedTime);
-                    asset.stopWithFade(fadeOutDuration, false);
                 } catch (Exception e) {
                     logger.error("Error during fade-out", e);
                 }
