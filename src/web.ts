@@ -138,6 +138,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
       }
       const audio: HTMLAudioElement = document.createElement('audio');
+      audio.id = options.assetId; // Assign assetId to audio.id
       audio.crossOrigin = 'anonymous';
       audio.src = options.assetPath;
       audio.autoplay = false;
@@ -201,6 +202,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     await this.preload(preloadOptions);
 
     const audio = this.getAudioAsset(assetId).audio;
+    audio.id = assetId; // Ensure audio.id is set to assetId
     audio.loop = false;
     audio.currentTime = time;
     audio.addEventListener('ended', () => this.onEnded(assetId), {
