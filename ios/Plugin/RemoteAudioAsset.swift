@@ -371,14 +371,17 @@ public class RemoteAudioAsset: AudioAsset {
             guard !players.isEmpty && playIndex < players.count else { return }
 
             let player = players[playIndex]
-            player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1))
-
-            if player.timeControlStatus != .playing {
-                player.volume = 0 // Start with volume at 0
-                player.play()
-                self.fadeIn(player: player, fadeInDuration: fadeInDuration, targetVolume: volume ?? self.initialVolume)
-                playIndex = (playIndex + 1) % players.count
-                startCurrentTimeUpdates()
+            player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1)) { [weak self] _ in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    if player.timeControlStatus != .playing {
+                        player.volume = 0 // Start with volume at 0
+                        player.play()
+                        self.fadeIn(player: player, fadeInDuration: fadeInDuration, targetVolume: volume ?? self.initialVolume)
+                        self.playIndex = (self.playIndex + 1) % self.players.count
+                        self.startCurrentTimeUpdates()
+                    }
+                }
             }
         }
     }
