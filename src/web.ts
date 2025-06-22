@@ -37,7 +37,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   async resume(options: AssetResumeOptions): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     const data = this.getAudioAssetData(options.assetId);
-    const targetVolume = data.volumeBeforePause || data.volume || 1;
+    const targetVolume = data.volumeBeforePause ?? data.volume ?? 1;
     if (options?.fadeIn) {
       const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeIn(audio, fadeDuration, targetVolume);
@@ -138,6 +138,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
       }
       const audio: HTMLAudioElement = document.createElement('audio');
+      audio.id = options.assetId; // Assign assetId to audio.id
       audio.crossOrigin = 'anonymous';
       audio.src = options.assetPath;
       audio.autoplay = false;
@@ -201,6 +202,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     await this.preload(preloadOptions);
 
     const audio = this.getAudioAsset(assetId).audio;
+    audio.id = assetId; // Ensure audio.id is set to assetId
     audio.loop = false;
     audio.currentTime = time;
     audio.addEventListener('ended', () => this.onEnded(assetId), {
@@ -454,7 +456,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const track = this.getOrCreateMediaElementSource(audioContext, audio);
     const gainNode = this.getOrCreateGainNode(audio, track);
 
-    if (time) {
+    if (time !== undefined) {
       gainNode.gain.setValueAtTime(volume, time);
     } else {
       gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
@@ -502,6 +504,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
           this.cancelGainNodeRamp(audio);
           this.setAudioAssetData(assetId, data);
           this.doFadeOut(audio, data.fadeOutDuration);
+          data.fadeOut = false; // prevent re-entry
+          this.setAudioAssetData(assetId, data);
         }
       } else {
         this.stopCurrentTimeUpdates(assetId);

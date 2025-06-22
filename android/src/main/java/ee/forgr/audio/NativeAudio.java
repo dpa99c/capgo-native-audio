@@ -19,7 +19,6 @@ import static ee.forgr.audio.Constant.LOOP;
 import static ee.forgr.audio.Constant.OPT_FOCUS_AUDIO;
 import static ee.forgr.audio.Constant.PLAY;
 import static ee.forgr.audio.Constant.RATE;
-import static ee.forgr.audio.Constant.TIME;
 import static ee.forgr.audio.Constant.VOLUME;
 
 import android.Manifest;
@@ -408,7 +407,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     if (fadeIn) {
                         double time = asset.getCurrentPosition();
                         JSObject data = getAudioAssetData(audioId);
-                        float volume = data.getLong("volumeBeforePause");
+                        float volume = (float) data.optDouble("volumeBeforePause", 1.0);
                         data.remove("volumeBeforePause");
                         setAudioAssetData(audioId, data);
                         asset.playWithFadeIn(time, volume, fadeInDurationMs);
@@ -470,6 +469,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (isStringValid(call.getString(ASSET_ID))) {
                 String audioId = call.getString(ASSET_ID);
                 cancelPendingPlay(audioId);
+
+                // cleanup for memory leak prevention
+                pendingPlayHandlers.remove(audioId);
+                pendingPlayRunnables.remove(audioId);
+                audioData.remove(audioId);
+
                 if (audioAssetList.containsKey(audioId)) {
                     AudioAsset asset = audioAssetList.get(audioId);
                     if (asset != null) {
@@ -487,6 +492,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 call.reject(ERROR_AUDIO_ID_MISSING);
             }
         } catch (Exception ex) {
+            // Cleanup on error
+            String audioId = call.getString(ASSET_ID);
+            if (audioId != null) {
+                pendingPlayHandlers.remove(audioId);
+                pendingPlayRunnables.remove(audioId);
+                audioData.remove(audioId);
+            }
             call.reject(ex.getMessage());
         }
     }
@@ -649,13 +661,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             double fadeOutDuration = data.optDouble("fadeOutDuration", AudioAsset.DEFAULT_FADE_DURATION_MS);
             if (roundedTime >= fadeOutStartTime) {
                 try {
-                    AudioAsset asset = audioAssetList.get(assetId);
-                    if (asset == null) {
-                        logger.error("Asset not found for fade-out: " + assetId);
-                        return;
+                    // Synchronize on audioAssetList to prevent race conditions
+                    synchronized (audioAssetList) {
+                        AudioAsset asset = audioAssetList.get(assetId);
+                        if (asset == null) {
+                            logger.error("Asset not found for fade-out: " + assetId);
+                            return;
+                        }
+                        // Synchronize on the asset instance as well
+                        synchronized (asset) {
+                            logger.debug("Triggering fade-out for asset: " + assetId + " at time: " + roundedTime);
+                            asset.stopWithFade(fadeOutDuration, false);
+                        }
                     }
-                    logger.debug("Triggering fade-out for asset: " + assetId + " at time: " + roundedTime);
-                    asset.stopWithFade(fadeOutDuration, false);
                 } catch (Exception e) {
                     logger.error("Error during fade-out", e);
                 }

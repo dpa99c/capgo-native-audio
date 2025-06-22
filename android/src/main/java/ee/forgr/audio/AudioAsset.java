@@ -8,15 +8,15 @@ import android.util.Log;
 import androidx.annotation.RequiresApi;
 import androidx.media3.common.util.UnstableApi;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @UnstableApi
-public class AudioAsset {
+public class AudioAsset implements AutoCloseable {
 
     public static final double DEFAULT_FADE_DURATION_MS = 1000.0;
 
@@ -35,7 +35,7 @@ public class AudioAsset {
     protected ScheduledExecutorService fadeExecutor;
     protected ScheduledFuture<?> fadeTask;
 
-    protected Map<String, Boolean> dispatchedCompleteMap = new HashMap<>();
+    protected Map<String, Boolean> dispatchedCompleteMap = new ConcurrentHashMap<>();
 
     protected enum FadeState {
         NONE,
@@ -192,7 +192,7 @@ public class AudioAsset {
         }
 
         audioList.clear();
-        fadeExecutor.shutdown();
+        close(); // Ensure fadeExecutor is shutdown
     }
 
     public void setVolume(float volume, double duration) throws Exception {
@@ -492,9 +492,22 @@ public class AudioAsset {
         final float initialVolume = Math.max(audio.getVolume(), minVolume);
         final float finalTargetVolume = Math.max(targetVolume, minVolume);
 
-        // Calculate exponential ratio for perceptual fade
-        final float safeInitialVolume = Math.max(initialVolume, zeroVolume);
-        final double ratio = Math.pow(finalTargetVolume / safeInitialVolume, 1.0 / steps);
+        // Clamp values to avoid overflow/underflow and invalid pow inputs
+        final float safeInitialVolume = Math.max(initialVolume, minVolume);
+        final float safeFinalTargetVolume = Math.max(finalTargetVolume, minVolume);
+
+        double ratio;
+        if (steps <= 0 || safeInitialVolume <= 0f || safeFinalTargetVolume <= 0f) {
+            ratio = 1.0; // No fade or invalid, just set directly
+        } else if (safeInitialVolume == safeFinalTargetVolume) {
+            ratio = 1.0;
+        } else {
+            ratio = Math.pow(safeFinalTargetVolume / safeInitialVolume, 1.0 / steps);
+            // Clamp ratio to reasonable bounds to avoid overflow
+            if (Double.isNaN(ratio) || Double.isInfinite(ratio) || ratio <= 0.0) {
+                ratio = 1.0;
+            }
+        }
 
         Log.d(
             TAG,
@@ -508,9 +521,12 @@ public class AudioAsset {
             steps +
             " steps (step duration: " +
             (FADE_DELAY_MS / 1000.0) +
-            "s)"
+            "s, ratio: " +
+            ratio +
+            ")"
         );
 
+        double finalRatio = ratio;
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
             new Runnable() {
                 int currentStep = 0;
@@ -526,7 +542,11 @@ public class AudioAsset {
                     }
 
                     try {
-                        currentVolume *= (float) ratio;
+                        if (finalRatio == 1.0) {
+                            currentVolume = safeFinalTargetVolume;
+                        } else {
+                            currentVolume *= (float) finalRatio;
+                        }
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
                         if (audio != null) audio.setVolume(currentVolume);
                         logger.verbose("Fade to step " + currentStep + ": volume set to " + currentVolume);
@@ -552,5 +572,21 @@ public class AudioAsset {
         }
         fadeState = FadeState.NONE;
         fadeTask = null;
+    }
+
+    @Override
+    public void close() {
+        if (fadeExecutor != null && !fadeExecutor.isShutdown()) {
+            fadeExecutor.shutdown();
+        }
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            close();
+        } finally {
+            super.finalize();
+        }
     }
 }

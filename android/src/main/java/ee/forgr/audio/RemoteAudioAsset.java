@@ -22,7 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @UnstableApi
-public class RemoteAudioAsset extends AudioAsset {
+public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
 
     private static final String TAG = "RemoteAudioAsset";
     private static final Logger logger = new Logger(TAG);
@@ -308,7 +308,23 @@ public class RemoteAudioAsset extends AudioAsset {
             player.release();
         }
         players.clear();
-        fadeExecutor.shutdown();
+        close(); // Ensure fadeExecutor is shutdown
+    }
+
+    @Override
+    public void close() {
+        if (fadeExecutor != null && !fadeExecutor.isShutdown()) {
+            fadeExecutor.shutdown();
+        }
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            close();
+        } finally {
+            super.finalize();
+        }
     }
 
     @Override
@@ -653,9 +669,21 @@ public class RemoteAudioAsset extends AudioAsset {
         final float initialVolume = Math.max(player.getVolume(), minVolume);
         final float finalTargetVolume = Math.max(targetVolume, minVolume);
 
-        // Calculate exponential ratio for perceptual fade
-        final float safeInitialVolume = Math.max(initialVolume, zeroVolume);
-        final double ratio = Math.pow(finalTargetVolume / safeInitialVolume, 1.0 / steps);
+        // Clamp values to avoid overflow/underflow and invalid pow inputs
+        final float safeInitialVolume = Math.max(initialVolume, minVolume);
+        final float safeFinalTargetVolume = Math.max(finalTargetVolume, minVolume);
+
+        double ratio;
+        if (steps <= 0 || safeInitialVolume <= 0f || safeFinalTargetVolume <= 0f) {
+            ratio = 1.0;
+        } else if (safeInitialVolume == safeFinalTargetVolume) {
+            ratio = 1.0;
+        } else {
+            ratio = Math.pow(safeFinalTargetVolume / safeInitialVolume, 1.0 / steps);
+            if (Double.isNaN(ratio) || Double.isInfinite(ratio) || ratio <= 0.0) {
+                ratio = 1.0;
+            }
+        }
 
         Log.d(
             TAG,
@@ -669,9 +697,12 @@ public class RemoteAudioAsset extends AudioAsset {
             steps +
             " steps (step duration: " +
             (FADE_DELAY_MS / 1000.0) +
-            "s)"
+            "s, ratio: " +
+            ratio +
+            ")"
         );
 
+        double finalRatio = ratio;
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
             new Runnable() {
                 int currentStep = 0;
@@ -686,7 +717,11 @@ public class RemoteAudioAsset extends AudioAsset {
                         return;
                     }
                     try {
-                        currentVolume *= (float) ratio;
+                        if (finalRatio == 1.0) {
+                            currentVolume = safeFinalTargetVolume;
+                        } else {
+                            currentVolume *= (float) finalRatio;
+                        }
                         // Clamp volume between minVolume and maxVolume
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVol);
                         logger.verbose("Fade to step " + currentStep + ": volume set to " + currentVolume);
