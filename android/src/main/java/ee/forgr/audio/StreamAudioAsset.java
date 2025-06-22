@@ -18,7 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @UnstableApi
-public class StreamAudioAsset extends AudioAsset {
+public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
 
     private static final String TAG = "StreamAudioAsset";
     private static final Logger logger = new Logger(TAG);
@@ -271,8 +271,24 @@ public class StreamAudioAsset extends AudioAsset {
                 player.clearMediaItems();
                 player.release();
                 isPrepared = false;
-                fadeExecutor.shutdown();
+                close(); // Ensure fadeExecutor is shutdown
             });
+    }
+
+    @Override
+    public void close() {
+        if (fadeExecutor != null && !fadeExecutor.isShutdown()) {
+            fadeExecutor.shutdown();
+        }
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            close();
+        } finally {
+            super.finalize();
+        }
     }
 
     @Override

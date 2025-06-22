@@ -16,7 +16,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @UnstableApi
-public class AudioAsset {
+public class AudioAsset implements AutoCloseable {
 
     public static final double DEFAULT_FADE_DURATION_MS = 1000.0;
 
@@ -192,7 +192,7 @@ public class AudioAsset {
         }
 
         audioList.clear();
-        fadeExecutor.shutdown();
+        close(); // Ensure fadeExecutor is shutdown
     }
 
     public void setVolume(float volume, double duration) throws Exception {
@@ -552,5 +552,21 @@ public class AudioAsset {
         }
         fadeState = FadeState.NONE;
         fadeTask = null;
+    }
+
+    @Override
+    public void close() {
+        if (fadeExecutor != null && !fadeExecutor.isShutdown()) {
+            fadeExecutor.shutdown();
+        }
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            close();
+        } finally {
+            super.finalize();
+        }
     }
 }
