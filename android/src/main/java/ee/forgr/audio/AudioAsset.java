@@ -492,9 +492,22 @@ public class AudioAsset implements AutoCloseable {
         final float initialVolume = Math.max(audio.getVolume(), minVolume);
         final float finalTargetVolume = Math.max(targetVolume, minVolume);
 
-        // Calculate exponential ratio for perceptual fade
-        final float safeInitialVolume = Math.max(initialVolume, zeroVolume);
-        final double ratio = Math.pow(finalTargetVolume / safeInitialVolume, 1.0 / steps);
+        // Clamp values to avoid overflow/underflow and invalid pow inputs
+        final float safeInitialVolume = Math.max(initialVolume, minVolume);
+        final float safeFinalTargetVolume = Math.max(finalTargetVolume, minVolume);
+
+        double ratio;
+        if (steps <= 0 || safeInitialVolume <= 0f || safeFinalTargetVolume <= 0f) {
+            ratio = 1.0; // No fade or invalid, just set directly
+        } else if (safeInitialVolume == safeFinalTargetVolume) {
+            ratio = 1.0;
+        } else {
+            ratio = Math.pow(safeFinalTargetVolume / safeInitialVolume, 1.0 / steps);
+            // Clamp ratio to reasonable bounds to avoid overflow
+            if (Double.isNaN(ratio) || Double.isInfinite(ratio) || ratio <= 0.0) {
+                ratio = 1.0;
+            }
+        }
 
         Log.d(
             TAG,
@@ -508,7 +521,7 @@ public class AudioAsset implements AutoCloseable {
             steps +
             " steps (step duration: " +
             (FADE_DELAY_MS / 1000.0) +
-            "s)"
+            "s, ratio: " + ratio + ")"
         );
 
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
@@ -526,7 +539,11 @@ public class AudioAsset implements AutoCloseable {
                     }
 
                     try {
-                        currentVolume *= (float) ratio;
+                        if (ratio == 1.0) {
+                            currentVolume = safeFinalTargetVolume;
+                        } else {
+                            currentVolume *= (float) ratio;
+                        }
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
                         if (audio != null) audio.setVolume(currentVolume);
                         logger.verbose("Fade to step " + currentStep + ": volume set to " + currentVolume);
