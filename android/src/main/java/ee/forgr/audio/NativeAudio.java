@@ -408,7 +408,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     if (fadeIn) {
                         double time = asset.getCurrentPosition();
                         JSObject data = getAudioAssetData(audioId);
-                        float volume = data.getLong("volumeBeforePause");
+                        float volume = data.optDouble("volumeBeforePause", 1.0).floatValue();
                         data.remove("volumeBeforePause");
                         setAudioAssetData(audioId, data);
                         asset.playWithFadeIn(time, volume, fadeInDurationMs);
