@@ -37,7 +37,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   async resume(options: AssetResumeOptions): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     const data = this.getAudioAssetData(options.assetId);
-    const targetVolume = data.volumeBeforePause || data.volume || 1;
+    const targetVolume = data.volumeBeforePause ?? data.volume ?? 1;
     if (options?.fadeIn) {
       const fadeDuration = options.fadeInDuration || NativeAudioWeb.DEFAULT_FADE_DURATION_SEC;
       this.doFadeIn(audio, fadeDuration, targetVolume);
