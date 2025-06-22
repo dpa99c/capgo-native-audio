@@ -502,6 +502,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
           this.cancelGainNodeRamp(audio);
           this.setAudioAssetData(assetId, data);
           this.doFadeOut(audio, data.fadeOutDuration);
+          data.fadeOut = false; // prevent re-entry
+          this.setAudioAssetData(assetId, data);
         }
       } else {
         this.stopCurrentTimeUpdates(assetId);
