@@ -526,6 +526,7 @@ public class AudioAsset implements AutoCloseable {
             ")"
         );
 
+        double finalRatio = ratio;
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
             new Runnable() {
                 int currentStep = 0;
@@ -541,10 +542,10 @@ public class AudioAsset implements AutoCloseable {
                     }
 
                     try {
-                        if (ratio == 1.0) {
+                        if (finalRatio == 1.0) {
                             currentVolume = safeFinalTargetVolume;
                         } else {
-                            currentVolume *= (float) ratio;
+                            currentVolume *= (float) finalRatio;
                         }
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
                         if (audio != null) audio.setVolume(currentVolume);

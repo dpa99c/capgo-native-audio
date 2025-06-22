@@ -19,7 +19,6 @@ import static ee.forgr.audio.Constant.LOOP;
 import static ee.forgr.audio.Constant.OPT_FOCUS_AUDIO;
 import static ee.forgr.audio.Constant.PLAY;
 import static ee.forgr.audio.Constant.RATE;
-import static ee.forgr.audio.Constant.TIME;
 import static ee.forgr.audio.Constant.VOLUME;
 
 import android.Manifest;
@@ -408,7 +407,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     if (fadeIn) {
                         double time = asset.getCurrentPosition();
                         JSObject data = getAudioAssetData(audioId);
-                        float volume = data.optDouble("volumeBeforePause", 1.0).floatValue();
+                        float volume = (float) data.optDouble("volumeBeforePause", 1.0);
                         data.remove("volumeBeforePause");
                         setAudioAssetData(audioId, data);
                         asset.playWithFadeIn(time, volume, fadeInDurationMs);

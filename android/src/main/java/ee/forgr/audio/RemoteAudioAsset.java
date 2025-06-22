@@ -702,6 +702,7 @@ public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
             ")"
         );
 
+        double finalRatio = ratio;
         fadeTask = fadeExecutor.scheduleWithFixedDelay(
             new Runnable() {
                 int currentStep = 0;
@@ -716,10 +717,10 @@ public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
                         return;
                     }
                     try {
-                        if (ratio == 1.0) {
+                        if (finalRatio == 1.0) {
                             currentVolume = safeFinalTargetVolume;
                         } else {
-                            currentVolume *= (float) ratio;
+                            currentVolume *= (float) finalRatio;
                         }
                         // Clamp volume between minVolume and maxVolume
                         currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVol);
