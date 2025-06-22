@@ -8,8 +8,8 @@ import android.util.Log;
 import androidx.annotation.RequiresApi;
 import androidx.media3.common.util.UnstableApi;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -35,7 +35,7 @@ public class AudioAsset {
     protected ScheduledExecutorService fadeExecutor;
     protected ScheduledFuture<?> fadeTask;
 
-    protected Map<String, Boolean> dispatchedCompleteMap = new HashMap<>();
+    protected Map<String, Boolean> dispatchedCompleteMap = new ConcurrentHashMap<>();
 
     protected enum FadeState {
         NONE,
