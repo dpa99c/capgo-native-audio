@@ -454,7 +454,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const track = this.getOrCreateMediaElementSource(audioContext, audio);
     const gainNode = this.getOrCreateGainNode(audio, track);
 
-    if (time) {
+    if (time !== undefined) {
       gainNode.gain.setValueAtTime(volume, time);
     } else {
       gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
