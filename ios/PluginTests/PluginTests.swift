@@ -61,8 +61,7 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testAssetId,
                 withPath: self.tempFileURL.path,
                 withChannels: 1,
-                withVolume: 0.5,
-                withFadeDelay: 0.5
+                withVolume: 0.5
             )
 
             // Add it to the plugin's audio list
@@ -71,7 +70,6 @@ class PluginTests: XCTestCase {
             // Verify initial values
             XCTAssertEqual(asset.assetId, self.testAssetId)
             XCTAssertEqual(asset.initialVolume, 0.5)
-            XCTAssertEqual(asset.fadeDelay, 0.5)
 
             expectation.fulfill()
         }
@@ -89,8 +87,7 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testAssetId,
                 withPath: self.tempFileURL.path,
                 withChannels: 1,
-                withVolume: 1.0,
-                withFadeDelay: 0.5
+                withVolume: 1.0
             )
 
             // Add it to the plugin's audio list
@@ -98,7 +95,7 @@ class PluginTests: XCTestCase {
 
             // Test setting volume
             let testVolume: Float = 0.7
-            asset.setVolume(volume: NSNumber(value: testVolume))
+            asset.setVolume(volume: NSNumber(value: testVolume), fadeDuration: 1.0)
 
             // We can't directly check player.volume as it may take time to set
             // So we'll just verify the method doesn't crash
@@ -122,8 +119,7 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testRemoteAssetId,
                 withPath: testURL,
                 withChannels: 1,
-                withVolume: 0.6,
-                withFadeDelay: 0.3
+                withVolume: 0.6
             )
 
             // Add it to the plugin's audio list
@@ -132,7 +128,6 @@ class PluginTests: XCTestCase {
             // Verify initial values
             XCTAssertEqual(asset.assetId, self.testRemoteAssetId)
             XCTAssertEqual(asset.initialVolume, 0.6)
-            XCTAssertEqual(asset.fadeDelay, 0.3)
             XCTAssertNotNil(asset.asset, "AVURLAsset should be created")
 
             expectation.fulfill()
@@ -143,16 +138,17 @@ class PluginTests: XCTestCase {
 
     func testPluginPreloadMethod() {
         // Create a plugin call to test the preload method
-        let call = CAPPluginCall(callbackId: "test", options: [
-            "assetId": testAssetId,
-            "assetPath": tempFileURL.path,
-            "volume": 0.8,
-            "audioChannelNum": 2
-        ], success: { (_, _) in
-            // Success case
-        }, error: { (_) in
-            XCTFail("Preload shouldn't fail")
-        })
+        guard let call = CAPPluginCall(callbackId: "test", methodName: "preload",
+                                       options: [
+                                        "assetId": testAssetId,
+                                        "assetPath": tempFileURL.path,
+                                        "volume": 0.8,
+                                        "audioChannelNum": 2
+                                       ], success: { (_, _) in
+                                           // Success case
+                                       }, error: { (_) in
+                                           XCTFail("Preload shouldn't fail")
+                                       }) else { return }
 
         // Call the plugin method
         plugin.preload(call)
@@ -179,17 +175,16 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testAssetId,
                 withPath: self.tempFileURL.path,
                 withChannels: 1,
-                withVolume: 1.0,
-                withFadeDelay: 0.2
+                withVolume: 1.0
             )
 
             // Test fade functionality (just make sure it doesn't crash)
-            asset.playWithFade(time: 0)
+            asset.playWithFade(time: 0, volume: 1.0, fadeInDuration: 0.3)
 
             // Wait a short time for fade to start
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 // Then test stop with fade
-                asset.stopWithFade()
+                asset.stopWithFade(fadeOutDuration: 0.3)
 
                 // Wait for fade to complete
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -225,8 +220,7 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testRemoteAssetId,
                 withPath: testURL,
                 withChannels: 1,
-                withVolume: 0.6,
-                withFadeDelay: 0.3
+                withVolume: 0.6
             )
 
             // Add it to the plugin's audio list
@@ -262,8 +256,7 @@ class PluginTests: XCTestCase {
                 withAssetId: self.testAssetId,
                 withPath: self.tempFileURL.path,
                 withChannels: 1,
-                withVolume: 1.0,
-                withFadeDelay: 0.5
+                withVolume: 1.0
             )
 
             // Ensure the fade timer is nil initially
@@ -284,7 +277,7 @@ class PluginTests: XCTestCase {
                 player.volume = 1.0
 
                 // Invoke using performSelector
-                asset.perform(selector, with: NSNumber(value: 1.0), with: NSNumber(value: 0.0), with: player)
+                asset.perform(selector, with: NSNumber(value: 1.0), with: player)
 
                 // Check that the fade timer was created
                 XCTAssertNotNil(asset.fadeTimer, "Fade timer should be created")

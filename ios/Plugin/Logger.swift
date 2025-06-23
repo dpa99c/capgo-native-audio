@@ -1,7 +1,10 @@
 import os.log
+import Foundation
 
 public class Logger {
     private var osLogger = nil as OSLog?
+
+    public static var debugModeEnabled = false
 
     // Constructor - init with logtag
     public init(logTag: String) {
@@ -32,7 +35,7 @@ public class Logger {
      ***************************/
 
     func osLog(_ message: String, level: OSLogType = .default, _ args: CVarArg...) {
-        if !NativeAudio.debugModeEnabled {
+        if !Logger.debugModeEnabled {
             return
         }
         let formatted = String(format: message, arguments: args)

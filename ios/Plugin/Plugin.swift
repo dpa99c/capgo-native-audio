@@ -35,10 +35,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     ]
     private var logger = Logger(logTag: "NativeAudio")
 
-    static var debugModeEnabled = false
-
     internal let audioQueue = DispatchQueue(label: "ee.forgr.audio.queue", qos: .userInitiated, attributes: .concurrent)
-    private var audioList: [String: Any] = [:] {
+    public var audioList: [String: Any] = [:] { // public access for testing
         didSet {
             // Ensure audioList modifications happen on audioQueue
             assert(DispatchQueue.getSpecific(key: queueKey) != nil)
@@ -141,7 +139,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func setDebugMode(_ call: CAPPluginCall) {
         let debug = call.getBool("enabled") ?? false
-        NativeAudio.debugModeEnabled = debug
+        Logger.debugModeEnabled = debug
         if debug {
             logger.info("Debug mode enabled")
         }
