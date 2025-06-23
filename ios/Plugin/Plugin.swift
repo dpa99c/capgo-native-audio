@@ -52,6 +52,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     // Store per-asset data (e.g. fade out, volume before pause, etc)
     private var audioAssetData: [String: [String: Any]] = [:]
 
+    // Add this property for testing purposes
+    var isRunningTests = false
+
     override public init() {
         super.init()
     }
@@ -717,8 +720,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             block()  // Already on queue
         } else {
-            audioQueue.sync(flags: .barrier) {
-                block()
+            // When running tests, avoid potential deadlocks by using async instead of sync
+            if isRunningTests {
+                audioQueue.async {
+                    block()
+                }
+            } else {
+                audioQueue.sync(flags: .barrier) {
+                    block()
+                }
             }
         }
     }

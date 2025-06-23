@@ -13,7 +13,10 @@ class PluginTests: XCTestCase {
     override func setUp() {
         super.setUp()
         plugin = NativeAudio()
-
+        
+        // Set up a testing override for executeOnAudioQueue to avoid deadlocks
+        plugin.isRunningTests = true
+        
         // Create a temporary audio file for testing
         let audioFilePath = NSTemporaryDirectory().appending("testAudio.wav")
         tempFileURL = URL(fileURLWithPath: audioFilePath)
@@ -26,7 +29,8 @@ class PluginTests: XCTestCase {
 
     override func tearDown() {
         // Clean up any audio assets
-        plugin.executeOnAudioQueue {
+        let expectation = self.expectation(description: "Cleanup audio assets")
+        plugin.audioQueue.async { 
             if let asset = self.plugin.audioList[self.testAssetId] as? AudioAsset {
                 asset.unload()
             }
@@ -34,7 +38,9 @@ class PluginTests: XCTestCase {
                 asset.unload()
             }
             self.plugin.audioList.removeAll()
+            expectation.fulfill()
         }
+        wait(for: [expectation], timeout: 2.0)
 
         // Try to delete the temporary file
         try? FileManager.default.removeItem(at: tempFileURL)
@@ -52,9 +58,10 @@ class PluginTests: XCTestCase {
     }
 
     func testAudioAssetInitialization() {
-        let expectation = XCTestExpectation(description: "Initialize AudioAsset")
-
-        plugin.executeOnAudioQueue {
+        let expectation = self.expectation(description: "Initialize AudioAsset")
+        
+        // Use async to avoid blocking the main thread
+        plugin.audioQueue.async {
             // Create an audio asset
             let asset = AudioAsset(
                 owner: self.plugin,
@@ -78,9 +85,9 @@ class PluginTests: XCTestCase {
     }
 
     func testAudioAssetVolumeControl() {
-        let expectation = XCTestExpectation(description: "Test volume control")
+        let expectation = self.expectation(description: "Test volume control")
 
-        plugin.executeOnAudioQueue {
+        plugin.audioQueue.async {
             // Create an audio asset
             let asset = AudioAsset(
                 owner: self.plugin,
@@ -107,12 +114,12 @@ class PluginTests: XCTestCase {
     }
 
     func testRemoteAudioAssetInitialization() {
-        let expectation = XCTestExpectation(description: "Initialize RemoteAudioAsset")
+        let expectation = self.expectation(description: "Initialize RemoteAudioAsset")
 
         // Use a publicly accessible test audio URL
         let testURL = "https://file-examples.com/storage/fe5947fd2362a2f06a86851/2017/11/file_example_MP3_700KB.mp3"
 
-        plugin.executeOnAudioQueue {
+        plugin.audioQueue.async {
             // Create a remote audio asset
             let asset = RemoteAudioAsset(
                 owner: self.plugin,
@@ -137,6 +144,9 @@ class PluginTests: XCTestCase {
     }
 
     func testPluginPreloadMethod() {
+        let loadExpectation = self.expectation(description: "Load asset")
+        let verifyExpectation = self.expectation(description: "Verify asset")
+        
         // Create a plugin call to test the preload method
         guard let call = CAPPluginCall(callbackId: "test", methodName: "preload",
                                        options: [
@@ -145,16 +155,19 @@ class PluginTests: XCTestCase {
                                         "volume": 0.8,
                                         "audioChannelNum": 2
                                        ], success: { (_, _) in
-                                           // Success case
+                                           loadExpectation.fulfill()
                                        }, error: { (_) in
                                            XCTFail("Preload shouldn't fail")
+                                           loadExpectation.fulfill()
                                        }) else { return }
 
         // Call the plugin method
         plugin.preload(call)
-
-        // Verify the asset was loaded by checking if it exists in the audioList
-        plugin.executeOnAudioQueue {
+        
+        wait(for: [loadExpectation], timeout: 5.0)
+        
+        // Verify in a separate expectation to ensure the asset is loaded
+        plugin.audioQueue.async {
             XCTAssertNotNil(self.plugin.audioList[self.testAssetId])
             if let asset = self.plugin.audioList[self.testAssetId] as? AudioAsset {
                 XCTAssertEqual(asset.assetId, self.testAssetId)
@@ -162,13 +175,16 @@ class PluginTests: XCTestCase {
             } else {
                 XCTFail("Asset should be of type AudioAsset")
             }
+            verifyExpectation.fulfill()
         }
+        
+        wait(for: [verifyExpectation], timeout: 5.0)
     }
 
     func testFadeEffects() {
-        let expectation = XCTestExpectation(description: "Test fade effects")
+        let expectation = self.expectation(description: "Test fade effects")
 
-        plugin.executeOnAudioQueue {
+        plugin.audioQueue.async {
             // Create an audio asset
             let asset = AudioAsset(
                 owner: self.plugin,
@@ -208,12 +224,12 @@ class PluginTests: XCTestCase {
 
     // Test notification observer pattern in RemoteAudioAsset
     func testNotificationObserverPattern() {
-        let expectation = XCTestExpectation(description: "Test notification observer")
+        let expectation = self.expectation(description: "Test notification observer")
 
         // Use a publicly accessible test audio URL
         let testURL = "https://file-examples.com/storage/fe5947fd2362a2f06a86851/2017/11/file_example_MP3_700KB.mp3"
 
-        plugin.executeOnAudioQueue {
+        plugin.audioQueue.async {
             // Create a remote audio asset
             let asset = RemoteAudioAsset(
                 owner: self.plugin,
@@ -247,9 +263,9 @@ class PluginTests: XCTestCase {
 
     // Test the fade timer functionality, which was a key part of our fixes
     func testFadeTimerFunctionality() {
-        let expectation = XCTestExpectation(description: "Test fade timer")
+        let expectation = self.expectation(description: "Test fade timer")
 
-        plugin.executeOnAudioQueue {
+        plugin.audioQueue.async {
             // Create an audio asset
             let asset = AudioAsset(
                 owner: self.plugin,

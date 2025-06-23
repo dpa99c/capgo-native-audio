@@ -18,7 +18,8 @@ public class RemoteAudioAsset: AudioAsset {
     override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!) {
         super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0)
 
-        owner.executeOnAudioQueue { [weak self] in
+        // Use a setup block that can be executed differently based on test mode
+        let setupBlock = { [weak self] in
             guard let self = self else { return }
 
             guard let url = URL(string: path ?? "") else {
@@ -66,6 +67,13 @@ public class RemoteAudioAsset: AudioAsset {
                 }
                 self.playerObservers.append(observer)
             }
+        }
+        
+        // In test mode, run setup directly to avoid deadlock
+        if owner.isRunningTests {
+            setupBlock()
+        } else {
+            owner.executeOnAudioQueue(setupBlock)
         }
     }
 

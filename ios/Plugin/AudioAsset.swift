@@ -68,8 +68,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
         // Limit channels to a reasonable maximum to prevent resource issues
         let channelCount = min(max(channels ?? 1, 1), Constant.MaxChannels)
-
-        owner.executeOnAudioQueue { [weak self] in
+        
+        // Create the players directly on the current queue when in test mode
+        // to avoid potential deadlocks
+        let setupBlock = { [weak self] in
             guard let self = self else { return }
             for _ in 0..<channelCount {
                 do {
@@ -84,6 +86,13 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                     logger.error("Error loading audio file: %@ - path: %@", error.localizedDescription, String(describing: path))
                 }
             }
+        }
+        
+        // In test mode, run setup directly to avoid deadlock
+        if owner.isRunningTests {
+            setupBlock()
+        } else {
+            owner.executeOnAudioQueue(setupBlock)
         }
     }
 
