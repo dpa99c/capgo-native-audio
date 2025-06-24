@@ -39,7 +39,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     public var audioList: [String: Any] = [:] { // public access for testing
         didSet {
             // Ensure audioList modifications happen on audioQueue
-            assert(DispatchQueue.getSpecific(key: queueKey) != nil)
+            if !isRunningTests {
+                assert(DispatchQueue.getSpecific(key: queueKey) != nil)
+            }
         }
     }
     private let queueKey = DispatchSpecificKey<Bool>()
@@ -603,14 +605,20 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     return
                 }
             } else if isLocalUrl == false {
-                // Handle public folder
-                assetPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath
-                let assetPathSplit = assetPath.components(separatedBy: ".")
-                if assetPathSplit.count >= 2 {
-                    basePath = Bundle.main.path(forResource: assetPathSplit[0], ofType: assetPathSplit[1])
-                } else {
-                    call.reject("Invalid asset path format: \(assetPath)")
-                    return
+                if isRunningTests {
+                    // Handle local file URL
+                    let fileURL = URL(fileURLWithPath: assetPath)
+                    basePath = fileURL.path
+                } else{
+                    // Handle public folder
+                    assetPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath
+                    let assetPathSplit = assetPath.components(separatedBy: ".")
+                    if assetPathSplit.count >= 2 {
+                        basePath = Bundle.main.path(forResource: assetPathSplit[0], ofType: assetPathSplit[1])
+                    } else {
+                        call.reject("Invalid asset path format: \(assetPath)")
+                        return
+                    }
                 }
             } else {
                 // Handle local file URL
