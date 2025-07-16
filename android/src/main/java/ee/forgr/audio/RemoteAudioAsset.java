@@ -767,9 +767,9 @@ public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
             new Runnable() {
                 @Override
                 public void run() {
-                    if (!players.isEmpty()) {
+                    if (!players.isEmpty() && playIndex >= 0 && playIndex < players.size()) {
                         ExoPlayer player = players.get(playIndex);
-                        if (player.getPlaybackState() == Player.STATE_READY) {
+                        if (player != null && player.getPlaybackState() == Player.STATE_READY) {
                             startTimeUpdateLoop();
                         } else {
                             // Check again in 100ms
@@ -788,13 +788,13 @@ public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
             public void run() {
                 try {
                     boolean isPaused = false;
-                    if (!players.isEmpty()) {
+                    if (!players.isEmpty() && playIndex >= 0 && playIndex < players.size()) {
                         ExoPlayer player = players.get(playIndex);
                         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
                             if (player.isPlaying()) {
                                 double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
                                 logger.debug("Play timer update: currentTime = " + currentTime);
-                                owner.notifyCurrentTime(assetId, currentTime);
+                                if (owner != null) owner.notifyCurrentTime(assetId, currentTime);
                                 currentTimeHandler.postDelayed(this, 100);
                                 return;
                             } else if (!player.getPlayWhenReady()) {
@@ -816,7 +816,7 @@ public class RemoteAudioAsset extends AudioAsset implements AutoCloseable {
                 }
             }
         };
-        try{
+        try {
             if (currentTimeHandler == null) {
                 currentTimeHandler = new Handler(Looper.getMainLooper());
             }
