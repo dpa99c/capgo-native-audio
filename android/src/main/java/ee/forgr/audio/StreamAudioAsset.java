@@ -742,7 +742,14 @@ public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
                 }
             }
         };
-        currentTimeHandler.post(currentTimeRunnable);
+        try{
+            if (currentTimeHandler == null) {
+                currentTimeHandler = new Handler(Looper.getMainLooper());
+            }
+            currentTimeHandler.post(currentTimeRunnable);
+        } catch (Exception e) {
+            logger.error("Error starting current time updates", e);
+        }
     }
 
     @Override
