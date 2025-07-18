@@ -32,9 +32,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-
 import androidx.media3.common.util.UnstableApi;
-
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -590,7 +588,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         ret.put("assetId", assetId);
         notifyListeners("complete", ret);
         AudioAsset asset = audioAssetList.get(assetId);
-        if(asset != null && autoResumeList.contains(asset)) {
+        if (asset != null && autoResumeList.contains(asset)) {
             logger.debug("Removing asset from resume list: " + assetId);
             autoResumeList.remove(asset);
         }
