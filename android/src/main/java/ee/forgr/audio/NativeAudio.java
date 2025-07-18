@@ -32,7 +32,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
+
 import androidx.media3.common.util.UnstableApi;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -60,7 +62,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     // Use thread-safe collections
     private static ConcurrentHashMap<String, AudioAsset> audioAssetList = new ConcurrentHashMap<>();
-    private static CopyOnWriteArrayList<AudioAsset> resumeList = new CopyOnWriteArrayList<>();
+    // List to manage auto-resume assets on audio focus changes or app lifecycle events
+    private static CopyOnWriteArrayList<AudioAsset> autoResumeList = new CopyOnWriteArrayList<>();
     private AudioManager audioManager;
     private final Map<String, PluginCall> pendingDurationCalls = new ConcurrentHashMap<>();
     private final Map<String, Handler> pendingPlayHandlers = new ConcurrentHashMap<>();
@@ -75,7 +78,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         super.load();
         this.audioManager = this.getActivity() != null ? (AudioManager) this.getActivity().getSystemService(Context.AUDIO_SERVICE) : null;
         audioAssetList = new ConcurrentHashMap<>();
-        resumeList = new CopyOnWriteArrayList<>();
+        autoResumeList = new CopyOnWriteArrayList<>();
     }
 
     @Override
@@ -86,13 +89,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 for (AudioAsset audio : audioAssetList.values()) {
                     if (audio != null && audio.isPlaying()) {
                         audio.pause();
-                        resumeList.addIfAbsent(audio);
+                        autoResumeList.addIfAbsent(audio);
                     }
                 }
             } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
                 logger.debug("Audio focus gained - resuming playback");
-                while (!resumeList.isEmpty()) {
-                    AudioAsset audio = resumeList.remove(0);
+                while (!autoResumeList.isEmpty()) {
+                    AudioAsset audio = autoResumeList.remove(0);
                     if (audio != null) audio.resume();
                 }
             } else if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
@@ -116,7 +119,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 if (audio != null) {
                     boolean wasPlaying = audio.pause();
                     if (wasPlaying) {
-                        resumeList.addIfAbsent(audio);
+                        autoResumeList.addIfAbsent(audio);
                     }
                 }
             }
@@ -129,9 +132,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     protected void handleOnResume() {
         super.handleOnResume();
         try {
-            while (!resumeList.isEmpty()) {
+            while (!autoResumeList.isEmpty()) {
                 logger.debug("Application resumed - resuming audio assets");
-                AudioAsset audio = resumeList.remove(0);
+                AudioAsset audio = autoResumeList.remove(0);
                 if (audio != null) audio.resume();
             }
         } catch (Exception ex) {
@@ -333,7 +336,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             double fadeOutDurationMs = fadeOutDurationSecs * 1000;
             AudioAsset asset = audioAssetList.get(audioId);
             if (asset != null) {
-                boolean wasPlaying = asset.isPlaying();
                 if (fadeOut) {
                     JSObject data = getAudioAssetData(audioId);
                     data.put("volumeBeforePause", asset.getVolume());
@@ -341,9 +343,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     asset.stopWithFade(fadeOutDurationMs, true);
                 } else {
                     asset.pause();
-                }
-                if (wasPlaying) {
-                    resumeList.addIfAbsent(asset);
                 }
                 call.resolve();
             } else {
@@ -374,7 +373,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 } else {
                     asset.resume();
                 }
-                resumeList.remove(asset);
+                autoResumeList.remove(asset);
                 call.resolve();
             } else {
                 call.reject(ERROR_ASSET_NOT_LOADED + " - " + audioId);
@@ -590,6 +589,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         JSObject ret = new JSObject();
         ret.put("assetId", assetId);
         notifyListeners("complete", ret);
+        AudioAsset asset = audioAssetList.get(assetId);
+        if(asset != null && autoResumeList.contains(asset)) {
+            logger.debug("Removing asset from resume list: " + assetId);
+            autoResumeList.remove(asset);
+        }
     }
 
     public void notifyCurrentTime(String assetId, double currentTime) {
@@ -818,9 +822,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             logger.debug("Initializing audio asset list");
             audioAssetList = new ConcurrentHashMap<>();
         }
-        if (resumeList == null) {
+        if (autoResumeList == null) {
             logger.debug("Initializing resume list");
-            resumeList = new CopyOnWriteArrayList<>();
+            autoResumeList = new CopyOnWriteArrayList<>();
         }
     }
 
