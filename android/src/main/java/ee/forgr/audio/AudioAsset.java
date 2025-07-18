@@ -76,6 +76,9 @@ public class AudioAsset implements AutoCloseable {
     }
 
     public void play(double time, float volume) throws Exception {
+        if (audioList.isEmpty() || playIndex < 0 || playIndex >= audioList.size()) {
+            throw new Exception("AudioDispatcher is null or playIndex out of bounds");
+        }
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null) {
             cancelFade();
@@ -91,10 +94,8 @@ public class AudioAsset implements AutoCloseable {
     }
 
     public double getDuration() {
-        if (audioList.size() != 1) return 0;
-
+        if (audioList.size() != 1 || playIndex < 0 || playIndex >= audioList.size()) return 0;
         AudioDispatcher audio = audioList.get(playIndex);
-
         if (audio != null) {
             return audio.getDuration();
         }
@@ -102,20 +103,16 @@ public class AudioAsset implements AutoCloseable {
     }
 
     public void setCurrentPosition(double time) {
-        if (audioList.size() != 1) return;
-
+        if (audioList.size() != 1 || playIndex < 0 || playIndex >= audioList.size()) return;
         AudioDispatcher audio = audioList.get(playIndex);
-
         if (audio != null) {
             audio.setCurrentPosition(time);
         }
     }
 
     public double getCurrentPosition() {
-        if (audioList.size() != 1) return 0;
-
+        if (audioList.size() != 1 || playIndex < 0 || playIndex >= audioList.size()) return 0;
         AudioDispatcher audio = audioList.get(playIndex);
-
         if (audio != null) {
             return audio.getCurrentPosition();
         }
@@ -180,18 +177,16 @@ public class AudioAsset implements AutoCloseable {
 
     public void unload() throws Exception {
         this.stop();
-
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);
-
             if (audio != null) {
                 audio.unload();
             } else {
                 throw new Exception("AudioDispatcher is null");
             }
         }
-
         audioList.clear();
+        stopCurrentTimeUpdates();
         close(); // Ensure fadeExecutor is shutdown
     }
 
@@ -213,8 +208,7 @@ public class AudioAsset implements AutoCloseable {
     }
 
     public float getVolume() throws Exception {
-        if (audioList.size() != 1) return 0;
-
+        if (audioList.size() != 1 || playIndex < 0 || playIndex >= audioList.size()) return 0;
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null) {
             return audio.getVolume();
@@ -235,7 +229,7 @@ public class AudioAsset implements AutoCloseable {
 
     public boolean isPlaying() throws Exception {
         for (AudioDispatcher ad : audioList) {
-            if (ad.isPlaying()) return true;
+            if (ad != null && ad.isPlaying()) return true;
         }
         return false;
     }
@@ -255,13 +249,14 @@ public class AudioAsset implements AutoCloseable {
     }
 
     public void setCurrentTime(double time) throws Exception {
+        if (owner == null || owner.getActivity() == null) return;
         owner
             .getActivity()
             .runOnUiThread(
                 new Runnable() {
                     @Override
                     public void run() {
-                        if (audioList.size() != 1) {
+                        if (audioList.size() != 1 || playIndex < 0 || playIndex >= audioList.size()) {
                             return;
                         }
                         AudioDispatcher audio = audioList.get(playIndex);
@@ -278,10 +273,7 @@ public class AudioAsset implements AutoCloseable {
         if (currentTimeHandler == null) {
             currentTimeHandler = new Handler(Looper.getMainLooper());
         }
-        // Reset completion status for this assetId
         dispatchedCompleteMap.put(assetId, false);
-
-        // Add small delay to let audio start playing
         currentTimeHandler.postDelayed(
             new Runnable() {
                 @Override
@@ -290,7 +282,7 @@ public class AudioAsset implements AutoCloseable {
                 }
             },
             100
-        ); // 100ms delay
+        );
     }
 
     private void startTimeUpdateLoop() {
@@ -299,6 +291,10 @@ public class AudioAsset implements AutoCloseable {
             public void run() {
                 AudioDispatcher audio = null;
                 try {
+                    if (audioList.isEmpty() || playIndex < 0 || playIndex >= audioList.size()) {
+                        logger.verbose("Audio dispatcher does not exist at index " + playIndex);
+                        return;
+                    }
                     audio = audioList.get(playIndex);
                 } catch (Exception e) {
                     logger.verbose("Audio dispatcher does not exist at index " + playIndex);
@@ -307,12 +303,11 @@ public class AudioAsset implements AutoCloseable {
                     logger.debug("Audio dispatcher does not exist - aborting timer update");
                     return;
                 }
-
                 try {
                     if (audio != null && audio.isPlaying()) {
                         double currentTime = getCurrentPosition();
                         logger.verbose("Play timer update: currentTime = " + currentTime);
-                        owner.notifyCurrentTime(assetId, currentTime);
+                        if (owner != null) owner.notifyCurrentTime(assetId, currentTime);
                         currentTimeHandler.postDelayed(this, 100);
                     } else {
                         logger.debug("Audio is not not playing");
@@ -330,7 +325,14 @@ public class AudioAsset implements AutoCloseable {
                 }
             }
         };
-        currentTimeHandler.post(currentTimeRunnable);
+        try {
+            if (currentTimeHandler == null) {
+                currentTimeHandler = new Handler(Looper.getMainLooper());
+            }
+            currentTimeHandler.post(currentTimeRunnable);
+        } catch (Exception e) {
+            logger.error("Error starting current time updates", e);
+        }
     }
 
     void stopCurrentTimeUpdates() {

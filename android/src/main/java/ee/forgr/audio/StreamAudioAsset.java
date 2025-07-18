@@ -699,7 +699,7 @@ public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
             new Runnable() {
                 @Override
                 public void run() {
-                    if (player.getPlaybackState() == Player.STATE_READY) {
+                    if (player != null && player.getPlaybackState() == Player.STATE_READY) {
                         startTimeUpdateLoop();
                     } else {
                         // Check again in 100ms
@@ -721,7 +721,7 @@ public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
                         if (player.isPlaying()) {
                             double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
                             logger.debug("Play timer update: currentTime = " + currentTime);
-                            owner.notifyCurrentTime(assetId, currentTime);
+                            if (owner != null) owner.notifyCurrentTime(assetId, currentTime);
                             currentTimeHandler.postDelayed(this, 100);
                             return;
                         } else if (!player.getPlayWhenReady()) {
@@ -742,7 +742,14 @@ public class StreamAudioAsset extends AudioAsset implements AutoCloseable {
                 }
             }
         };
-        currentTimeHandler.post(currentTimeRunnable);
+        try {
+            if (currentTimeHandler == null) {
+                currentTimeHandler = new Handler(Looper.getMainLooper());
+            }
+            currentTimeHandler.post(currentTimeRunnable);
+        } catch (Exception e) {
+            logger.error("Error starting current time updates", e);
+        }
     }
 
     @Override
